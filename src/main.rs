@@ -1,11 +1,14 @@
 use ggez;
 use glam::f32::Vec2;
 
-use ggez::event;
+use ggez::event::{EventHandler, run as launch};
 use ggez::graphics;
 use ggez::{Context, GameResult};
 use std::env;
 use std::path;
+use std::time::Duration;
+
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::collections::{HashMap, HashSet};
 
@@ -41,20 +44,35 @@ impl NodeSet {
     }
 }
 
-fn create_main_menu(state: &mut MainState) 
-{
-    state.nodes.create();
-
-    let banner = state.nodes.create();
-    state.texts.insert(banner, graphics::Text::new(("Hello", state.font, 48.0)));
-    state.positions.insert(banner, Vec2::new(10.0, 10.0));
-
-    let banner2 = state.nodes.create();
-    state.texts.insert(banner2, graphics::Text::new(("          world!", state.font, 48.0)));
-    state.positions.insert(banner2, Vec2::new(10.0, 80.0));
+struct State {
+    scene: Scene,
+    event_bus: Receiver<Event>,
+    event_bus_sender: Sender<Event>,
 }
 
-struct MainState {
+enum Scene {
+    Intro(Intro),
+    MainMenu(MainMenu),
+}
+
+enum Event {
+    IntroEnded,
+}
+
+struct Intro {
+    remaining: Duration,
+    sender: Sender<Event>,
+}
+
+impl Intro {
+    fn new(ctx: &mut Context, sender: Sender<Event>) -> GameResult<Intro> {
+        Ok(Intro { remaining: Duration::from_secs(1), sender })
+    }
+}
+
+struct IntroEnded;
+
+struct MainMenu {
     frames: usize,
     font: graphics::Font,
     nodes: NodeSet,
@@ -62,39 +80,104 @@ struct MainState {
     positions: HashMap<Nid, Vec2>,
 }
 
-impl MainState {
-    fn new(ctx: &mut Context) -> GameResult<MainState> {
-        let font = graphics::Font::new(ctx, "/LiberationMono-Regular.ttf")?;
-
-        Ok(MainState {
-            font,
+impl MainMenu {
+    fn new(ctx: &mut Context) -> GameResult<MainMenu> {
+        let mut m = MainMenu {
+            font: graphics::Font::new(ctx, "/LiberationMono-Regular.ttf")?,
             frames: 0,
             nodes: NodeSet {
                 nodes: HashSet::new(),
                 last_id: 0,
             },
-
             positions: HashMap::new(),
             texts: HashMap::new(),
-        })
+        };
+        m.init();
+        Ok(m)
+    }
+
+    fn init(&mut self) {
+        let banner = self.nodes.create();
+        self.texts
+            .insert(banner, graphics::Text::new(("Hello", self.font, 48.0)));
+        self.positions.insert(banner, Vec2::new(10.0, 10.0));
+
+        let banner2 = self.nodes.create();
+        self.texts.insert(
+            banner2,
+            graphics::Text::new(("          world!", self.font, 48.0)),
+        );
+        self.positions.insert(banner2, Vec2::new(10.0, 80.0));
     }
 }
 
-impl event::EventHandler for MainState {
-    fn update(&mut self, _ctx: &mut Context) -> GameResult {
+impl State {
+    fn new(ctx: &mut Context) -> GameResult<State> {
+        let (event_bus_sender, event_bus) = channel();
+        Ok(State {
+            scene: Scene::Intro(Intro::new(ctx, event_bus_sender.clone())?),
+            event_bus,
+            event_bus_sender,
+        })
+    }
+
+    fn update_scenes(&mut self, ctx: &mut Context) -> GameResult {
+        match &mut self.scene {
+            Scene::Intro(intro) => intro.update(ctx),
+            Scene::MainMenu(main_menu) => main_menu.update(ctx),
+        }
+    }
+
+    fn handle_events(&mut self, ctx: &mut Context) -> GameResult {
+        for e in self.event_bus.try_iter() {
+            match e {
+                Event::IntroEnded => {
+                    self.scene = Scene::MainMenu(MainMenu::new(ctx)?);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl EventHandler for State {
+    fn update(&mut self, ctx: &mut Context) -> GameResult {
+        self.update_scenes(ctx)?;
+        self.handle_events(ctx)?;
+        Ok(())
+    }
+    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        match &mut self.scene {
+            Scene::Intro(intro) => intro.draw(ctx),
+            Scene::MainMenu(main_menu) => main_menu.draw(ctx),
+        }
+    }
+}
+
+impl EventHandler for Intro {
+    fn update(&mut self, ctx: &mut Context) -> GameResult {
+        let delta = ggez::timer::delta(ctx);
+        if self.remaining > delta {
+            self.remaining -= delta;
+        } else {
+            self.sender.send(Event::IntroEnded);
+        }
+        Ok(())
+    }
+    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        Ok(())
+    }
+}
+
+impl EventHandler for MainMenu {
+    fn update(&mut self, ctx: &mut Context) -> GameResult {
         Ok(())
     }
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
 
         for node in self.nodes.nodes.iter() {
-            if let (
-                Some(text),
-                Some(position),
-            ) = (
-                self.texts.get(node),
-                self.positions.get(node),
-            ) {
+            if let (Some(text), Some(position)) = (self.texts.get(node), self.positions.get(node)) {
                 graphics::draw(ctx, text, (position.clone(),))?;
             }
         }
@@ -123,7 +206,7 @@ pub fn main() -> GameResult {
     let cb = ggez::ContextBuilder::new("helloworld", "ggez").add_resource_path(resource_dir);
     let (mut ctx, mut event_loop) = cb.build()?;
 
-    let mut state = MainState::new(&mut ctx)?;
-    create_main_menu(&mut state);
-    event::run(&mut ctx, &mut event_loop, &mut state)
+    let mut state = State::new(&mut ctx)?;
+
+    launch(&mut ctx, &mut event_loop, &mut state)
 }
