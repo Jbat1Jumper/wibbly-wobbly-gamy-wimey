@@ -1,7 +1,7 @@
 use ggez;
 use glam::f32::Vec2;
 
-use ggez::event::{EventHandler, run as launch};
+use ggez::event::{run as launch, EventHandler};
 use ggez::graphics;
 use ggez::{Context, GameResult};
 use std::env;
@@ -11,6 +11,8 @@ use std::time::Duration;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::collections::{HashMap, HashSet};
+
+use legion::*;
 
 type Nid = i32;
 
@@ -66,7 +68,10 @@ struct Intro {
 
 impl Intro {
     fn new(ctx: &mut Context, sender: Sender<Event>) -> GameResult<Intro> {
-        Ok(Intro { remaining: Duration::from_secs(1), sender })
+        Ok(Intro {
+            remaining: Duration::from_secs(1),
+            sender,
+        })
     }
 }
 
@@ -74,40 +79,99 @@ struct IntroEnded;
 
 struct MainMenu {
     frames: usize,
-    font: graphics::Font,
-    nodes: NodeSet,
-    texts: HashMap<Nid, graphics::Text>,
-    positions: HashMap<Nid, Vec2>,
+    world: World,
+    text_resources: TextResources,
+}
+
+struct Position(Vec2);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct Text {
+    string: String,
+    font: Font,
+    size: u32,
+}
+
+impl Text {
+    fn new<T: Into<String>>(s: T, font: Font, size: u32) -> Text {
+        Text {
+            string: s.into(),
+            font,
+            size,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Font {
+    LiberationMono,
+}
+
+impl Font {
+    fn resource_path(&self) -> &'static str {
+        match self {
+            Font::LiberationMono => "/LiberationMono-Regular.ttf",
+        }
+    }
+}
+
+struct TextResources {
+    rendered_texts: HashMap<Text, graphics::Text>,
+    loaded_fonts: HashMap<Font, graphics::Font>,
+}
+
+impl TextResources {
+    fn get_font<'a>(
+        &'a mut self,
+        ctx: &mut Context,
+        font: &Font,
+    ) -> GameResult<&'a graphics::Font> {
+        if !self.loaded_fonts.contains_key(font) {
+            let gfont = graphics::Font::new(ctx, font.resource_path())?;
+            self.loaded_fonts.insert(*font, gfont);
+        }
+        Ok(self.loaded_fonts.get(font).unwrap())
+    }
+
+    fn render_text<'a>(
+        &'a mut self,
+        ctx: &mut Context,
+        text: &Text,
+    ) -> GameResult<&'a graphics::Text> {
+        if !self.rendered_texts.contains_key(text) {
+            let Text { string, font, size } = text;
+            let gfont = self.get_font(ctx, font)?;
+            let rtext = graphics::Text::new((string.clone(), *gfont, *size as f32));
+            self.rendered_texts.insert(text.clone(), rtext);
+        }
+        Ok(self.rendered_texts.get(text).unwrap())
+    }
 }
 
 impl MainMenu {
     fn new(ctx: &mut Context) -> GameResult<MainMenu> {
         let mut m = MainMenu {
-            font: graphics::Font::new(ctx, "/LiberationMono-Regular.ttf")?,
-            frames: 0,
-            nodes: NodeSet {
-                nodes: HashSet::new(),
-                last_id: 0,
+            text_resources: TextResources {
+                loaded_fonts: HashMap::new(),
+                rendered_texts: HashMap::new(),
             },
-            positions: HashMap::new(),
-            texts: HashMap::new(),
+            frames: 0,
+            world: World::default(),
         };
         m.init();
         Ok(m)
     }
-
     fn init(&mut self) {
-        let banner = self.nodes.create();
-        self.texts
-            .insert(banner, graphics::Text::new(("Hello", self.font, 48.0)));
-        self.positions.insert(banner, Vec2::new(10.0, 10.0));
+        let font = Font::LiberationMono;
+        self.world.push((
+            Text::new("Hello", font, 48),
+            Position(Vec2::new(10.0, 10.0)),
+        ));
 
-        let banner2 = self.nodes.create();
-        self.texts.insert(
-            banner2,
-            graphics::Text::new(("          world!", self.font, 48.0)),
-        );
-        self.positions.insert(banner2, Vec2::new(10.0, 80.0));
+        self.world.push((
+            Text::new("          world!", font, 40),
+            Position(Vec2::new(10.0, 80.0)),
+        ));
     }
 }
 
@@ -176,11 +240,14 @@ impl EventHandler for MainMenu {
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
 
-        for node in self.nodes.nodes.iter() {
-            if let (Some(text), Some(position)) = (self.texts.get(node), self.positions.get(node)) {
-                graphics::draw(ctx, text, (position.clone(),))?;
-            }
+        let res = Resources::default();
+
+        let mut query = <(&Position, &Text)>::query();
+        for (Position(position), text) in query.iter_mut(&mut self.world) {
+            let rtext = self.text_resources.render_text(ctx, text)?;
+            graphics::draw(ctx, rtext, (position.clone(),));
         }
+
         graphics::present(ctx)?;
 
         self.frames += 1;
