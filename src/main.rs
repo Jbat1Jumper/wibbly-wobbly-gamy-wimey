@@ -179,13 +179,11 @@ fn get_tile_sprite_and_transform (
 ) -> Option<( Sprite, SpriteTransform)> {
     let nh = tile_map.neighborhood(pos);
 
-    for (id, constrains) in tileset.tiles.iter() {
-        for flipped in &[false, true] {
-            let constrains = if *flipped { constrains.clone().flip_horizontally() } else { constrains.clone() };
-            for rotation in &Rotation::all() {
+    for flipped in &[false, true] {
+        for rotation in &Rotation::all() {
+            for (id, constrains) in tileset.tiles.iter() {
+                let constrains = if *flipped { constrains.clone().flip_horizontally() } else { constrains.clone() };
                 let constrains = constrains.clone().rotate(rotation);
-
-
                 let fits = constrains.iter()
                     .zip(nh.iter())
                     .all(|(constrain, tile)| constrain.satisfies(tile) );
