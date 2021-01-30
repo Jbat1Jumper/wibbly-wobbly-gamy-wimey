@@ -14,22 +14,166 @@ use std::collections::{HashMap, HashSet};
 
 use legion::*;
 
+use pyxel::Pyxel;
+
+mod components;
+use components::*;
+
+#[derive(Clone, Copy, Debug)]
 enum Command {
     GoToMainMenu,
     StartNewGame,
     Exit,
 }
+
+#[derive(Clone, Copy, Debug)]
+enum Sprite {
+    TileRef(usize, TilesetRef),
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SpriteTransform {
+    rotated_degrees: usize,
+    filpped: bool,
+}
+
+#[derive(Clone, Debug)]
+struct TileMap {
+    tiles: Vec<Vec<Tile>>,
+    size: (usize, usize),
+}
+
+impl TileMap {
+    fn new(size: (usize, usize)) -> TileMap {
+        TileMap {
+            size,
+            tiles: std::iter::repeat_with(|| {
+                std::iter::repeat(Tile::Empty).take(size.1).collect()
+            })
+            .take(size.0)
+            .collect(),
+        }
+    }
+
+    fn get_at(&self, pos: (usize, usize)) -> Tile {
+        self.tiles[pos.1][pos.0]
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Tile {
+    Empty,
+    Ground,
+    Wall,
+    Door(DoorKind, DoorState, Direction),
+}
+
+fn tile_mapping(pos: (usize, usize), tile_map: &TileMap) -> Sprite {
+    let tile = tile_map.get_at(pos);
+    let id = panic!();
+    let tileset = panic!();
+    Sprite::TileRef(id, tileset);
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Frame(u32);
+
+#[derive(Clone, Copy, Debug)]
+enum TilesetRef {
+    PyxelFile(&'static str),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+enum Direction {
+    Up,
+    Left,
+    Down,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum DoorState {
+    Open,
+    Closed,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum DoorKind {
+    Known,
+    Unknown,
+    Dark,
+}
+
+#[derive(Clone, Debug)]
+struct Rng;
+
+#[derive(Clone, Debug)]
+struct RoomParams {
+    connection_constrains: HashMap<Direction, ConnectionConstrain>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ConnectionConstrain {
+    Unrestricted,
+    MustBe(Connection),
+}
+
+#[derive(Clone, Debug)]
+struct Room {
+    size: (usize, usize),
+    tile_map: TileMap,
+    connections: HashMap<Direction, Connection>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Connection {
+    Common,
+    Dark,
+    NotConnected,
+}
+
+trait RoomCreator {
+    fn create_room(params: &RoomParams, rng: &mut Rng) -> Room;
+    fn populate(&mut self, params: &RoomParams, rng: &mut Rng);
+}
+
+struct SimpleRoomCreator;
+
+impl RoomCreator for SimpleRoomCreator {
+    fn create_room(params: &RoomParams, rng: &mut Rng) -> Room {
+        let mut connections = HashMap::new();
+
+        for (dir, constrain) in params.connection_constrains.iter() {
+            connections.insert(
+                *dir,
+                match constrain {
+                    ConnectionConstrain::Unrestricted => Connection::Common,
+                    ConnectionConstrain::MustBe(con) => *con,
+                },
+            );
+        }
+        Room {
+            connections,
+            size: (8, 5),
+            tile_map: TileMap::new((8, 5)),
+        }
+    }
+
+    fn populate(&mut self, params: &RoomParams, rng: &mut Rng) {}
+}
+
+#[derive(Clone, Copy, Debug)]
 struct Position(Vec2);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Text {
     string: String,
     font: Font,
-    size: u32,
+    size: usize,
 }
 
 impl Text {
-    fn new<T: Into<String>>(s: T, font: Font, size: u32) -> Text {
+    fn new<T: Into<String>>(s: T, font: Font, size: usize) -> Text {
         Text {
             string: s.into(),
             font,
@@ -161,7 +305,7 @@ impl Game {
             KeyCode::D => Some(Button::Right),
             KeyCode::J => Some(Button::A),
             KeyCode::K => Some(Button::B),
-            _ => None
+            _ => None,
         }
     }
 
