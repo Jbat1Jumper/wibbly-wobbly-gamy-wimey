@@ -399,7 +399,7 @@ enum RoomCommand {
 }
 
 impl Room {
-    fn draw(&self, ctx: &mut Context) -> GameResult {
+    fn draw(&self, ctx: &mut Backend) -> GameResult {
         // query and draw room entities:
         // - draw tiles
         // - draw shadows?
@@ -458,7 +458,7 @@ impl Font {
     }
 }
 
-struct Context {
+struct Backend {
     ggez_ctx: ggez::Context,
     ggez_events_loop: ggez::event::EventsLoop,
     text_resources: TextResources,
@@ -466,7 +466,7 @@ struct Context {
     frames: usize,
 }
 
-impl Context {
+impl Backend {
     fn draw_text(&mut self, text: &Text, position: &Position) -> GameResult {
         let Position(pos) = position;
         let rtext = self.text_resources.render_text(&mut self.ggez_ctx, text)?;
@@ -536,7 +536,7 @@ enum ButtonState {
 
 struct Game {
     scene: Box<dyn Scene>,
-    context: Context,
+    backend: Backend,
 }
 
 impl Game {
@@ -545,7 +545,7 @@ impl Game {
     ) -> GameResult<Game> {
         Ok(Game {
             scene: Box::new(Intro::new()),
-            context: Context {
+            backend: Backend {
                 ggez_ctx,
                 ggez_events_loop,
                 frames: 0,
@@ -580,7 +580,7 @@ impl Game {
     }
 
     fn run(&mut self) -> GameResult {
-        while self.context.ggez_ctx.continuing {
+        while self.backend.ggez_ctx.continuing {
             let button_events = self.poll_ggez_events();
             self.handle_button_events(button_events)?;
             self.update()?;
@@ -592,11 +592,11 @@ impl Game {
 
     fn poll_ggez_events(&mut self) -> Vec<(Button, ButtonState)> {
         let mut button_events: Vec<(Button, ButtonState)> = vec![];
-        let Context {
+        let Backend {
             ggez_ctx,
             ggez_events_loop,
             ..
-        } = &mut self.context;
+        } = &mut self.backend;
         ggez_ctx.timer_context.tick();
         ggez_events_loop.poll_events(|event| {
             ggez_ctx.process_event(&event);
@@ -629,30 +629,30 @@ impl Game {
 
     fn handle_button_events(&mut self, button_events: Vec<(Button, ButtonState)>) -> GameResult {
         for (button, state) in button_events.iter() {
-            self.scene.on_input(&mut self.context, button, state)?
+            self.scene.on_input(&mut self.backend, button, state)?
         }
         Ok(())
     }
 
     fn update(&mut self) -> GameResult {
-        self.scene.update(&mut self.context)
+        self.scene.update(&mut self.backend)
     }
 
     fn draw(&mut self) -> GameResult {
-        graphics::clear(&mut self.context.ggez_ctx, [0.1, 0.2, 0.3, 1.0].into());
-        self.scene.draw(&mut self.context)?;
-        graphics::present(&mut self.context.ggez_ctx)?;
+        graphics::clear(&mut self.backend.ggez_ctx, [0.1, 0.2, 0.3, 1.0].into());
+        self.scene.draw(&mut self.backend)?;
+        graphics::present(&mut self.backend.ggez_ctx)?;
 
-        self.context.frames += 1;
-        if (self.context.frames % 100) == 0 {
-            println!("FPS: {}", ggez::timer::fps(&self.context.ggez_ctx));
+        self.backend.frames += 1;
+        if (self.backend.frames % 100) == 0 {
+            println!("FPS: {}", ggez::timer::fps(&self.backend.ggez_ctx));
         }
 
         Ok(())
     }
 
     fn execute_commands_from_bus(&mut self) -> GameResult {
-        for e in self.context.command_bus.iter() {
+        for e in self.backend.command_bus.iter() {
             match e {
                 Command::GoToMainMenu => {
                     self.scene = Box::new(MainMenu::new());
@@ -661,7 +661,7 @@ impl Game {
                     self.scene = Box::new(GameScene::new());
                 }
                 Command::Exit => {
-                    ggez::event::quit(&mut self.context.ggez_ctx);
+                    ggez::event::quit(&mut self.backend.ggez_ctx);
                 }
             }
         }
@@ -682,13 +682,13 @@ impl Intro {
 }
 
 trait Scene {
-    fn update(&mut self, ctx: &mut Context) -> GameResult;
-    fn draw(&mut self, ctx: &mut Context) -> GameResult;
-    fn on_input(&mut self, ctx: &mut Context, button: &Button, state: &ButtonState) -> GameResult;
+    fn update(&mut self, ctx: &mut Backend) -> GameResult;
+    fn draw(&mut self, ctx: &mut Backend) -> GameResult;
+    fn on_input(&mut self, ctx: &mut Backend, button: &Button, state: &ButtonState) -> GameResult;
 }
 
 impl Scene for Intro {
-    fn update(&mut self, ctx: &mut Context) -> GameResult {
+    fn update(&mut self, ctx: &mut Backend) -> GameResult {
         let delta = ctx.delta_time();
         if self.remaining > delta {
             self.remaining -= delta;
@@ -697,10 +697,10 @@ impl Scene for Intro {
         }
         Ok(())
     }
-    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+    fn draw(&mut self, ctx: &mut Backend) -> GameResult {
         Ok(())
     }
-    fn on_input(&mut self, ctx: &mut Context, button: &Button, state: &ButtonState) -> GameResult {
+    fn on_input(&mut self, ctx: &mut Backend, button: &Button, state: &ButtonState) -> GameResult {
         Ok(())
     }
 }
@@ -737,10 +737,10 @@ impl MainMenu {
 }
 
 impl Scene for MainMenu {
-    fn update(&mut self, ctx: &mut Context) -> GameResult {
+    fn update(&mut self, ctx: &mut Backend) -> GameResult {
         Ok(())
     }
-    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+    fn draw(&mut self, ctx: &mut Backend) -> GameResult {
         let res = Resources::default();
 
         let mut query = <(&Position, &Text)>::query();
@@ -750,7 +750,7 @@ impl Scene for MainMenu {
 
         Ok(())
     }
-    fn on_input(&mut self, ctx: &mut Context, button: &Button, state: &ButtonState) -> GameResult {
+    fn on_input(&mut self, ctx: &mut Backend, button: &Button, state: &ButtonState) -> GameResult {
         match button {
             Button::A => ctx.queue(Command::StartNewGame),
             Button::Start => ctx.queue(Command::Exit),
@@ -769,13 +769,13 @@ impl GameScene {
 }
 
 impl Scene for GameScene {
-    fn update(&mut self, ctx: &mut Context) -> GameResult {
+    fn update(&mut self, ctx: &mut Backend) -> GameResult {
         Ok(())
     }
-    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+    fn draw(&mut self, ctx: &mut Backend) -> GameResult {
         Ok(())
     }
-    fn on_input(&mut self, ctx: &mut Context, button: &Button, state: &ButtonState) -> GameResult {
+    fn on_input(&mut self, ctx: &mut Backend, button: &Button, state: &ButtonState) -> GameResult {
         Ok(())
     }
 }
