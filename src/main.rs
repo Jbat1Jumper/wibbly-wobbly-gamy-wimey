@@ -38,7 +38,7 @@ enum Sprite {
 #[derive(Clone, Copy, Debug)]
 struct SpriteTransform {
     rotation: Rotation,
-    filpped: bool,
+    flipped: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -103,8 +103,19 @@ enum Rotation {
     Deg270,
 }
 
+impl Rotation {
+    fn all() -> [Rotation; 4] {
+        [
+            Deg0,
+            Deg90,
+            Deg180,
+            Deg270,
+        ]
+    }
+}
+
 trait Rotable {
-    fn rotate(self, rotation: Rotation) -> Self;
+    fn rotate(self, rotation: &Rotation) -> Self;
 }
 
 trait Flippable {
@@ -116,7 +127,7 @@ where
     T: Copy,
 {
     #[rustfmt::skip]
-    fn rotate(self, rotation: Rotation) -> [T; 9] {
+    fn rotate(self, rotation: &Rotation) -> [T; 9] {
         match rotation {
             Deg0 => self,
             Deg90 => [
@@ -142,6 +153,7 @@ impl<T> Flippable for [T; 9]
 where 
     T: Copy,
 {
+    #[rustfmt::skip]
     fn flip_horizontally(self) -> [T; 9] {
         [
             self[2], self[1], self[0], 
@@ -152,7 +164,7 @@ where
 }
 
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tile {
     Empty,
     Ground,
@@ -164,17 +176,32 @@ fn get_tile_sprite_and_transform (
     pos: (usize, usize),
     tile_map: &TileMap,
     tileset: Tileset
-) -> (
-    Sprite,
-    SpriteTransform
-) {
+) -> Option<( Sprite, SpriteTransform)> {
     let nh = tile_map.neighborhood(pos);
 
     for (id, constrains) in tileset.tiles.iter() {
+        for flipped in &[false, true] {
+            let constrains = if *flipped { constrains.clone().flip_horizontally() } else { constrains.clone() };
+            for rotation in &Rotation::all() {
+                let constrains = constrains.clone().rotate(rotation);
 
+
+                let fits = constrains.iter()
+                    .zip(nh.iter())
+                    .all(|(constrain, tile)| constrain.satisfies(tile) );
+
+                return Some((
+                    Sprite::TileRef(*id, tileset.reference()), 
+                    SpriteTransform {
+                        rotation: *rotation,
+                        flipped: *flipped,
+                    },
+                ));
+
+            }
+        }
     }
-
-    let id = panic!();
+    None
 }
 
 
@@ -191,6 +218,12 @@ struct Tileset {
     tiles: HashMap<usize, [Constrain<Tile>; 9]>,
 }
 
+impl Tileset {
+    fn reference(&self) -> TilesetRef {
+        TilesetRef::PyxelFile(self.pyxel_file)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum Direction {
     Up,
@@ -199,13 +232,13 @@ enum Direction {
     Right,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DoorState {
     Open,
     Closed,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DoorKind {
     Known,
     Unknown,
