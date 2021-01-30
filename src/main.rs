@@ -19,8 +19,8 @@ use pyxel::Pyxel;
 mod components;
 use components::*;
 
-use Direction::*;
 use Constrain::*;
+use Direction::*;
 use Rotation::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -65,6 +65,12 @@ impl TileMap {
         }
     }
 
+    fn set_at(&mut self, pos: (usize, usize), tile: Tile) {
+        if self.in_bounds(pos) {
+            self.tiles[pos.1][pos.0] = tile;
+        }
+    }
+
     fn in_bounds(&self, pos: (usize, usize)) -> bool {
         panic!()
     }
@@ -105,12 +111,7 @@ enum Rotation {
 
 impl Rotation {
     fn all() -> [Rotation; 4] {
-        [
-            Deg0,
-            Deg90,
-            Deg180,
-            Deg270,
-        ]
+        [Deg0, Deg90, Deg180, Deg270]
     }
 }
 
@@ -123,7 +124,7 @@ trait Flippable {
 }
 
 impl<T> Rotable for [T; 9]
-where 
+where
     T: Copy,
 {
     #[rustfmt::skip]
@@ -131,38 +132,37 @@ where
         match rotation {
             Deg0 => self,
             Deg90 => [
-                self[6], self[3], self[0], 
-                self[7], self[4], self[1], 
-                self[8], self[5], self[2], 
+                self[6], self[3], self[0],
+                self[7], self[4], self[1],
+                self[8], self[5], self[2],
             ],
             Deg180 => [
-                self[8], self[7], self[6], 
-                self[5], self[4], self[3], 
-                self[2], self[1], self[0], 
+                self[8], self[7], self[6],
+                self[5], self[4], self[3],
+                self[2], self[1], self[0],
             ],
             Deg270 => [
-                self[2], self[5], self[8], 
-                self[1], self[4], self[7], 
-                self[0], self[3], self[6], 
+                self[2], self[5], self[8],
+                self[1], self[4], self[7],
+                self[0], self[3], self[6],
             ],
         }
     }
 }
 
-impl<T> Flippable for [T; 9] 
-where 
+impl<T> Flippable for [T; 9]
+where
     T: Copy,
 {
     #[rustfmt::skip]
     fn flip_horizontally(self) -> [T; 9] {
         [
-            self[2], self[1], self[0], 
-            self[5], self[4], self[3], 
-            self[8], self[7], self[6], 
+            self[2], self[1], self[0],
+            self[5], self[4], self[3],
+            self[8], self[7], self[6],
         ]
     }
 }
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tile {
@@ -172,36 +172,39 @@ enum Tile {
     Door(DoorKind, DoorState, Direction),
 }
 
-fn get_tile_sprite_and_transform (
+fn get_tile_sprite_and_transform(
     pos: (usize, usize),
     tile_map: &TileMap,
-    tileset: Tileset
-) -> Option<( Sprite, SpriteTransform)> {
+    tileset: Tileset,
+) -> Option<(Sprite, SpriteTransform)> {
     let nh = tile_map.neighborhood(pos);
 
     for flipped in &[false, true] {
         for rotation in &Rotation::all() {
             for (id, constrains) in tileset.tiles.iter() {
-                let constrains = if *flipped { constrains.clone().flip_horizontally() } else { constrains.clone() };
+                let constrains = if *flipped {
+                    constrains.clone().flip_horizontally()
+                } else {
+                    constrains.clone()
+                };
                 let constrains = constrains.clone().rotate(rotation);
-                let fits = constrains.iter()
+                let fits = constrains
+                    .iter()
                     .zip(nh.iter())
-                    .all(|(constrain, tile)| constrain.satisfies(tile) );
+                    .all(|(constrain, tile)| constrain.satisfies(tile));
 
                 return Some((
-                    Sprite::TileRef(*id, tileset.reference()), 
+                    Sprite::TileRef(*id, tileset.reference()),
                     SpriteTransform {
                         rotation: *rotation,
                         flipped: *flipped,
                     },
                 ));
-
             }
         }
     }
     None
 }
-
 
 #[derive(Clone, Copy, Debug)]
 struct Frame(u32);
@@ -285,7 +288,7 @@ enum Connection {
 
 trait RoomCreator {
     fn create_room(params: &RoomParams, rng: &mut Rng) -> Room;
-    fn populate(&mut self, params: &RoomParams, rng: &mut Rng);
+    fn populate(&mut self, room: &mut Room, params: &RoomParams, rng: &mut Rng);
 }
 
 struct SimpleRoomCreator;
@@ -310,7 +313,9 @@ impl RoomCreator for SimpleRoomCreator {
         }
     }
 
-    fn populate(&mut self, params: &RoomParams, rng: &mut Rng) {}
+    fn populate(&mut self, room: &mut Room, params: &RoomParams, rng: &mut Rng) {
+        room.tile_map.set_at((0, 0), Tile::Ground);
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
