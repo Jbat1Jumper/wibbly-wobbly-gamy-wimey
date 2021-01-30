@@ -388,7 +388,7 @@ struct Room {
 }
 
 enum RoomInput {
-    Frame,
+    Frame(Duration),
     Button(Button, ButtonState),
     PlayerEnters(Direction),
 }
@@ -419,7 +419,7 @@ fn room_from_blueprint(blueprint: RoomBlueprint, tileset: &Tileset) -> Room {
     world.extend(
         iter_positions(blueprint.size)
             .iter()
-            .filter_map(|pos| get_tile_sprite_and_transform(*pos, &blueprint.tile_map, tileset))
+            .filter_map(|pos| get_tile_sprite_and_transform(*pos, &blueprint.tile_map, tileset)),
     );
 
     Room { world }
@@ -535,7 +535,7 @@ enum ButtonState {
 }
 
 struct Game {
-    scene: Scene,
+    scene: Box<dyn Scene>,
     context: Context,
 }
 
@@ -544,7 +544,7 @@ impl Game {
         (ggez_ctx, ggez_events_loop): (ggez::Context, ggez::event::EventsLoop),
     ) -> GameResult<Game> {
         Ok(Game {
-            scene: Scene::Intro(Intro::new()),
+            scene: Box::new(Intro::new()),
             context: Context {
                 ggez_ctx,
                 ggez_events_loop,
@@ -581,81 +581,66 @@ impl Game {
 
     fn run(&mut self) -> GameResult {
         while self.context.ggez_ctx.continuing {
-            let mut button_events: Vec<(Button, ButtonState)> = vec![];
-
-            {
-                let Context {
-                    ggez_ctx,
-                    ggez_events_loop,
-                    ..
-                } = &mut self.context;
-                ggez_ctx.timer_context.tick();
-                ggez_events_loop.poll_events(|event| {
-                    ggez_ctx.process_event(&event);
-                    match event {
-                        ggez::event::winit_event::Event::WindowEvent { event, .. } => match event {
-                            ggez::event::winit_event::WindowEvent::CloseRequested => {
-                                ggez::event::quit(ggez_ctx)
-                            }
-                            ggez::event::winit_event::WindowEvent::KeyboardInput {
-                                input:
-                                    ggez::event::winit_event::KeyboardInput {
-                                        virtual_keycode: Some(keycode),
-                                        state,
-                                        ..
-                                    },
-                                ..
-                            } => match Self::key_binding(keycode) {
-                                Some(button) => {
-                                    button_events.push((button, Self::state_binding(state)))
-                                }
-                                None => (),
-                            },
-                            // `CloseRequested` and `KeyboardInput` events won't appear here.
-                            x => (), //println!("Other window event fired: {:?}", x),
-                        },
-
-                        x => (), //println!("Device event fired: {:?}", x),
-                    }
-                });
-            }
-
-            for (button, state) in button_events.iter() {
-                self.scene_on_input(button, state);
-            }
-
-            self.update_scene()?;
-            self.handle_events()?;
-            self.draw_scene()?;
+            let button_events = self.poll_ggez_events();
+            self.handle_button_events(button_events)?;
+            self.update()?;
+            self.execute_commands_from_bus()?;
+            self.draw()?;
         }
         Ok(())
     }
 
-    fn scene_on_input(&mut self, button: &Button, state: &ButtonState) -> GameResult {
-        match &mut self.scene {
-            Scene::Intro(intro) => intro.on_input(&mut self.context, button, state),
-            Scene::MainMenu(main_menu) => main_menu.on_input(&mut self.context, button, state),
-            Scene::GameScene(s) => s.on_input(&mut self.context, button, state),
-        }
+    fn poll_ggez_events(&mut self) -> Vec<(Button, ButtonState)> {
+        let mut button_events: Vec<(Button, ButtonState)> = vec![];
+        let Context {
+            ggez_ctx,
+            ggez_events_loop,
+            ..
+        } = &mut self.context;
+        ggez_ctx.timer_context.tick();
+        ggez_events_loop.poll_events(|event| {
+            ggez_ctx.process_event(&event);
+            match event {
+                ggez::event::winit_event::Event::WindowEvent { event, .. } => match event {
+                    ggez::event::winit_event::WindowEvent::CloseRequested => {
+                        ggez::event::quit(ggez_ctx)
+                    }
+                    ggez::event::winit_event::WindowEvent::KeyboardInput {
+                        input:
+                            ggez::event::winit_event::KeyboardInput {
+                                virtual_keycode: Some(keycode),
+                                state,
+                                ..
+                            },
+                        ..
+                    } => match Self::key_binding(keycode) {
+                        Some(button) => button_events.push((button, Self::state_binding(state))),
+                        None => (),
+                    },
+                    // `CloseRequested` and `KeyboardInput` events won't appear here.
+                    x => (), //println!("Other window event fired: {:?}", x),
+                },
+
+                x => (), //println!("Device event fired: {:?}", x),
+            }
+        });
+        button_events
     }
 
-    fn update_scene(&mut self) -> GameResult {
-        match &mut self.scene {
-            Scene::Intro(intro) => intro.update(&mut self.context),
-            Scene::MainMenu(main_menu) => main_menu.update(&mut self.context),
-            Scene::GameScene(s) => s.update(&mut self.context),
+    fn handle_button_events(&mut self, button_events: Vec<(Button, ButtonState)>) -> GameResult {
+        for (button, state) in button_events.iter() {
+            self.scene.on_input(&mut self.context, button, state)?
         }
+        Ok(())
     }
 
-    fn draw_scene(&mut self) -> GameResult {
+    fn update(&mut self) -> GameResult {
+        self.scene.update(&mut self.context)
+    }
+
+    fn draw(&mut self) -> GameResult {
         graphics::clear(&mut self.context.ggez_ctx, [0.1, 0.2, 0.3, 1.0].into());
-
-        match &mut self.scene {
-            Scene::Intro(intro) => intro.draw(&mut self.context),
-            Scene::MainMenu(main_menu) => main_menu.draw(&mut self.context),
-            Scene::GameScene(s) => s.draw(&mut self.context),
-        };
-
+        self.scene.draw(&mut self.context)?;
         graphics::present(&mut self.context.ggez_ctx)?;
 
         self.context.frames += 1;
@@ -666,14 +651,14 @@ impl Game {
         Ok(())
     }
 
-    fn handle_events(&mut self) -> GameResult {
+    fn execute_commands_from_bus(&mut self) -> GameResult {
         for e in self.context.command_bus.iter() {
             match e {
                 Command::GoToMainMenu => {
-                    self.scene = Scene::MainMenu(MainMenu::new());
+                    self.scene = Box::new(MainMenu::new());
                 }
                 Command::StartNewGame => {
-                    self.scene = Scene::GameScene(GameScene::new());
+                    self.scene = Box::new(GameScene::new());
                 }
                 Command::Exit => {
                     ggez::event::quit(&mut self.context.ggez_ctx);
@@ -682,12 +667,6 @@ impl Game {
         }
         Ok(())
     }
-}
-
-enum Scene {
-    Intro(Intro),
-    MainMenu(MainMenu),
-    GameScene(GameScene),
 }
 
 struct Intro {
@@ -702,13 +681,13 @@ impl Intro {
     }
 }
 
-trait SceneEventHandler {
+trait Scene {
     fn update(&mut self, ctx: &mut Context) -> GameResult;
     fn draw(&mut self, ctx: &mut Context) -> GameResult;
     fn on_input(&mut self, ctx: &mut Context, button: &Button, state: &ButtonState) -> GameResult;
 }
 
-impl SceneEventHandler for Intro {
+impl Scene for Intro {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         let delta = ctx.delta_time();
         if self.remaining > delta {
@@ -757,7 +736,7 @@ impl MainMenu {
     }
 }
 
-impl SceneEventHandler for MainMenu {
+impl Scene for MainMenu {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         Ok(())
     }
@@ -789,7 +768,7 @@ impl GameScene {
     }
 }
 
-impl SceneEventHandler for GameScene {
+impl Scene for GameScene {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         Ok(())
     }
