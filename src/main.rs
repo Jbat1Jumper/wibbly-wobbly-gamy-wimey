@@ -175,7 +175,7 @@ enum Tile {
 fn get_tile_sprite_and_transform(
     pos: (usize, usize),
     tile_map: &TileMap,
-    tileset: Tileset,
+    tileset: &Tileset,
 ) -> Option<(Sprite, SpriteTransform)> {
     let nh = tile_map.neighborhood(pos);
 
@@ -217,6 +217,64 @@ enum TilesetRef {
 struct Tileset {
     pyxel_file: &'static str,
     tiles: HashMap<usize, [Constrain<Tile>; 9]>,
+    animations: Vec<AnimatedTile>,
+}
+
+struct AnimatedTile {
+    name: &'static str,
+    /// Indicates that any tile that matches a frame should be animated
+    intrinsic: bool,
+    frames: Vec<usize>,
+}
+
+macro_rules! map(
+    { $($key:expr => $value:expr),+ } => {
+        {
+            let mut m = ::std::collections::HashMap::new();
+            $(
+                m.insert($key, $value);
+            )+
+            m
+        }
+     };
+);
+
+#[rustfmt::skip]
+fn base_tileset() -> Tileset {
+    use Tile::*;
+    let x = Unrestricted;
+    Tileset {
+        pyxel_file: "base.pyxel",
+        tiles: map!{
+            3 => [
+                x,              x,              x,
+                x,              MustBe(Wall),   MustBe(Wall),
+                x,              MustBe(Wall),   MustBe(Ground),
+            ],
+            4 => [
+                x,              x,              x,
+                MustBe(Wall),   MustBe(Wall),   MustBe(Wall),
+                x,              MustBe(Ground), x,
+            ],
+            12 => [
+                x,              x,              x,
+                MustBe(Wall),   MustBe(Wall),   MustBe(Wall),
+                x,              MustBe(Ground), x,
+            ],
+            7 => [
+                x,              x,              x,
+                x,              MustBe(Ground), x,
+                x,              x,              x,
+            ]
+        },
+        animations: vec![
+            AnimatedTile {
+                name: "wall_with_torch",
+                intrinsic: true,
+                frames: vec![12, 13, 15],
+            },
+        ],
+    }
 }
 
 impl Tileset {
@@ -273,10 +331,17 @@ where
 }
 
 #[derive(Clone, Debug)]
-struct Room {
+struct RoomBlueprint {
     size: (usize, usize),
     tile_map: TileMap,
     connections: HashMap<Direction, Connection>,
+}
+
+fn iter_positions(size: (usize, usize)) -> Vec<(usize, usize)> {
+    (0..size.1)
+        .map(|y| (0..size.0).map(move |x| (x, y)))
+        .flatten()
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -287,14 +352,14 @@ enum Connection {
 }
 
 trait RoomCreator {
-    fn create_room(params: &RoomParams, rng: &mut Rng) -> Room;
-    fn populate(&mut self, room: &mut Room, params: &RoomParams, rng: &mut Rng);
+    fn create_room(params: &RoomParams, rng: &mut Rng) -> RoomBlueprint;
+    fn populate(&mut self, room: &mut RoomBlueprint, params: &RoomParams, rng: &mut Rng);
 }
 
 struct SimpleRoomCreator;
 
 impl RoomCreator for SimpleRoomCreator {
-    fn create_room(params: &RoomParams, rng: &mut Rng) -> Room {
+    fn create_room(params: &RoomParams, rng: &mut Rng) -> RoomBlueprint {
         let mut connections = HashMap::new();
 
         for (dir, constrain) in params.connection_constrains.iter() {
@@ -306,16 +371,58 @@ impl RoomCreator for SimpleRoomCreator {
                 },
             );
         }
-        Room {
+        RoomBlueprint {
             connections,
             size: (8, 5),
             tile_map: TileMap::new((8, 5)),
         }
     }
 
-    fn populate(&mut self, room: &mut Room, params: &RoomParams, rng: &mut Rng) {
+    fn populate(&mut self, room: &mut RoomBlueprint, params: &RoomParams, rng: &mut Rng) {
         room.tile_map.set_at((0, 0), Tile::Ground);
     }
+}
+
+struct Room {
+    world: World,
+}
+
+enum RoomInput {
+    Frame,
+    Button(Button, ButtonState),
+    PlayerEnters(Direction),
+}
+
+enum RoomCommand {
+    PlayerExits(Direction),
+    PlayerDied,
+}
+
+impl Room {
+    fn draw(&self, ctx: &mut Context) -> GameResult {
+        // query and draw room entities:
+        // - draw tiles
+        // - draw shadows?
+        // - draw entities
+        // - draw effects
+        Ok(())
+    }
+
+    fn update(&mut self, event: RoomInput, cmd: Sender<RoomCommand>) {
+        // all room systems
+        // - player enters/exits handling
+    }
+}
+
+fn room_from_blueprint(blueprint: RoomBlueprint, tileset: &Tileset) -> Room {
+    let mut world = World::default();
+    world.extend(
+        iter_positions(blueprint.size)
+            .iter()
+            .filter_map(|pos| get_tile_sprite_and_transform(*pos, &blueprint.tile_map, tileset))
+    );
+
+    Room { world }
 }
 
 #[derive(Clone, Copy, Debug)]
