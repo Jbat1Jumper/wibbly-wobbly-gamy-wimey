@@ -19,6 +19,10 @@ use pyxel::Pyxel;
 mod components;
 use components::*;
 
+use Direction::*;
+use Constrain::*;
+use Rotation::*;
+
 #[derive(Clone, Copy, Debug)]
 enum Command {
     GoToMainMenu,
@@ -33,7 +37,7 @@ enum Sprite {
 
 #[derive(Clone, Copy, Debug)]
 struct SpriteTransform {
-    rotated_degrees: usize,
+    rotation: Rotation,
     filpped: bool,
 }
 
@@ -47,18 +51,106 @@ impl TileMap {
     fn new(size: (usize, usize)) -> TileMap {
         TileMap {
             size,
-            tiles: std::iter::repeat_with(|| {
-                std::iter::repeat(Tile::Empty).take(size.1).collect()
-            })
-            .take(size.0)
-            .collect(),
+            tiles: std::iter::repeat_with(|| std::iter::repeat(Tile::Empty).take(size.1).collect())
+                .take(size.0)
+                .collect(),
         }
     }
 
-    fn get_at(&self, pos: (usize, usize)) -> Tile {
-        self.tiles[pos.1][pos.0]
+    fn at(&self, pos: (usize, usize)) -> Tile {
+        if self.in_bounds(pos) {
+            self.tiles[pos.1][pos.0]
+        } else {
+            Tile::Empty
+        }
+    }
+
+    fn in_bounds(&self, pos: (usize, usize)) -> bool {
+        panic!()
+    }
+
+    #[rustfmt::skip]
+    fn neighborhood(&self, pos: (usize, usize)) -> [Tile; 9] {
+        [
+            self.at(pos.step(Left).step(Up)),   self.at(pos.step(Up)),   self.at(pos.step(Right).step(Up)),
+            self.at(pos.step(Left)),            self.at(pos),            self.at(pos.step(Right)),
+            self.at(pos.step(Left).step(Down)), self.at(pos.step(Down)), self.at(pos.step(Right).step(Down)),
+        ]
     }
 }
+
+trait GridWalkable {
+    fn step(&self, direction: Direction) -> Self;
+}
+
+impl GridWalkable for (usize, usize) {
+    fn step(&self, direction: Direction) -> Self {
+        let (x, y) = *self;
+        match direction {
+            Direction::Up => (x, y - 1),
+            Direction::Left => (x - 1, y),
+            Direction::Down => (x, y + 1),
+            Direction::Right => (x + 1, y),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Rotation {
+    Deg0,
+    Deg90,
+    Deg180,
+    Deg270,
+}
+
+trait Rotable {
+    fn rotate(self, rotation: Rotation) -> Self;
+}
+
+trait Flippable {
+    fn flip_horizontally(self) -> Self;
+}
+
+impl<T> Rotable for [T; 9]
+where 
+    T: Copy,
+{
+    #[rustfmt::skip]
+    fn rotate(self, rotation: Rotation) -> [T; 9] {
+        match rotation {
+            Deg0 => self,
+            Deg90 => [
+                self[6], self[3], self[0], 
+                self[7], self[4], self[1], 
+                self[8], self[5], self[2], 
+            ],
+            Deg180 => [
+                self[8], self[7], self[6], 
+                self[5], self[4], self[3], 
+                self[2], self[1], self[0], 
+            ],
+            Deg270 => [
+                self[2], self[5], self[8], 
+                self[1], self[4], self[7], 
+                self[0], self[3], self[6], 
+            ],
+        }
+    }
+}
+
+impl<T> Flippable for [T; 9] 
+where 
+    T: Copy,
+{
+    fn flip_horizontally(self) -> [T; 9] {
+        [
+            self[2], self[1], self[0], 
+            self[5], self[4], self[3], 
+            self[8], self[7], self[6], 
+        ]
+    }
+}
+
 
 #[derive(Clone, Copy, Debug)]
 enum Tile {
@@ -68,12 +160,23 @@ enum Tile {
     Door(DoorKind, DoorState, Direction),
 }
 
-fn tile_mapping(pos: (usize, usize), tile_map: &TileMap) -> Sprite {
-    let tile = tile_map.get_at(pos);
+fn get_tile_sprite_and_transform (
+    pos: (usize, usize),
+    tile_map: &TileMap,
+    tileset: Tileset
+) -> (
+    Sprite,
+    SpriteTransform
+) {
+    let nh = tile_map.neighborhood(pos);
+
+    for (id, constrains) in tileset.tiles.iter() {
+
+    }
+
     let id = panic!();
-    let tileset = panic!();
-    Sprite::TileRef(id, tileset);
 }
+
 
 #[derive(Clone, Copy, Debug)]
 struct Frame(u32);
@@ -81,6 +184,11 @@ struct Frame(u32);
 #[derive(Clone, Copy, Debug)]
 enum TilesetRef {
     PyxelFile(&'static str),
+}
+
+struct Tileset {
+    pyxel_file: &'static str,
+    tiles: HashMap<usize, [Constrain<Tile>; 9]>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -109,13 +217,25 @@ struct Rng;
 
 #[derive(Clone, Debug)]
 struct RoomParams {
-    connection_constrains: HashMap<Direction, ConnectionConstrain>,
+    connection_constrains: HashMap<Direction, Constrain<Connection>>,
 }
 
 #[derive(Clone, Copy, Debug)]
-enum ConnectionConstrain {
+enum Constrain<T> {
     Unrestricted,
-    MustBe(Connection),
+    MustBe(T),
+}
+
+impl<T> Constrain<T>
+where
+    T: Eq,
+{
+    fn satisfies(&self, item: &T) -> bool {
+        match self {
+            Unrestricted => true,
+            MustBe(something) => something == item,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -147,8 +267,8 @@ impl RoomCreator for SimpleRoomCreator {
             connections.insert(
                 *dir,
                 match constrain {
-                    ConnectionConstrain::Unrestricted => Connection::Common,
-                    ConnectionConstrain::MustBe(con) => *con,
+                    Unrestricted => Connection::Common,
+                    MustBe(con) => *con,
                 },
             );
         }
