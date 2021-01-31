@@ -125,6 +125,23 @@ impl GridWalkable for (i32, i32) {
 #[derive(Clone, Copy, Debug)]
 pub struct Position(pub Vec2);
 
+#[derive(Clone, Copy, Debug)]
+pub enum Sprite {
+    TileRef(usize, TilesetRef),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TilesetRef {
+    PyxelFile(&'static str),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SpriteTransform {
+    pub rotation: Rotation,
+    pub flipped: bool,
+}
+
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Text {
     pub string: String,

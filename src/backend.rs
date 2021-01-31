@@ -96,6 +96,10 @@ impl Backend {
         self.frames
     }
 
+    pub fn draw_sprite(&mut self, sprite: &Sprite, tranform: &SpriteTransform, position: &Position) -> GameResult {
+        panic!("No draw sprite me");
+    }
+
     pub fn poll_events(&mut self) -> Vec<(Button, ButtonState)> {
         let mut button_events: Vec<(Button, ButtonState)> = vec![];
         self.frames += 1;

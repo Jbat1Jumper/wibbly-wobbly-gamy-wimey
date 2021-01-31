@@ -16,17 +16,6 @@ use pyxel::Pyxel;
 use crate::backend::*;
 use crate::common::*;
 
-#[derive(Clone, Copy, Debug)]
-enum Sprite {
-    TileRef(usize, TilesetRef),
-}
-
-#[derive(Clone, Copy, Debug)]
-struct SpriteTransform {
-    rotation: Rotation,
-    flipped: bool,
-}
-
 #[derive(Clone, Debug)]
 struct TileMap {
     tiles: Vec<Vec<Tile>>,
@@ -120,11 +109,11 @@ enum Tile {
     Door(DoorKind, DoorState, Direction),
 }
 
-fn get_tile_sprite_and_transform(
+fn get_tile_components(
     pos: (i32, i32),
     tile_map: &TileMap,
     tileset: &Tileset,
-) -> Option<(Sprite, SpriteTransform)> {
+) -> Option<(Sprite, SpriteTransform, Position)> {
     let nh = tile_map.neighborhood(pos);
 
     for flipped in &[false, true] {
@@ -147,6 +136,8 @@ fn get_tile_sprite_and_transform(
                         rotation: *rotation,
                         flipped: *flipped,
                     },
+                    Position(Vec2::new(
+                            pos.0 as f32 * tileset.tile_width as f32, pos.1 as f32 * tileset.tile_height as f32))
                 ));
             }
         }
@@ -157,15 +148,12 @@ fn get_tile_sprite_and_transform(
 #[derive(Clone, Copy, Debug)]
 struct Frame(u32);
 
-#[derive(Clone, Copy, Debug)]
-enum TilesetRef {
-    PyxelFile(&'static str),
-}
-
 struct Tileset {
     pyxel_file: &'static str,
     tiles: HashMap<usize, [Constrain<Tile>; 9]>,
     animations: Vec<AnimatedTile>,
+    tile_width: usize,
+    tile_height: usize,
 }
 
 struct AnimatedTile {
@@ -193,6 +181,8 @@ fn base_tileset() -> Tileset {
     let x = Unrestricted;
     Tileset {
         pyxel_file: "base.pyxel",
+        tile_width: 16,
+        tile_height: 16,
         tiles: map!{
             3 => [
                 x,              x,              x,
@@ -323,8 +313,22 @@ enum RoomCommand {
     PlayerDied,
 }
 
+fn draw_sprites(world: &World, bk: &mut Backend) -> GameResult {
+    let mut query = <(&Sprite, &SpriteTransform, &Position)>::query();
+    for (sprite, transform, pos) in query.iter(world) {
+        bk.draw_sprite(sprite, transform, pos)?;
+    }
+    Ok(())
+}
+
+
 impl Room {
-    fn draw(&self, ctx: &mut Backend) -> GameResult {
+    fn draw(&self, bk: &mut Backend) -> GameResult {
+        draw_sprites(&self.world, bk)?;
+
+
+
+
         // query and draw room entities:
         // - draw tiles
         // - draw shadows?
@@ -344,7 +348,7 @@ fn room_from_blueprint(blueprint: RoomBlueprint, tileset: &Tileset) -> Room {
     world.extend(
         iter_positions(blueprint.size)
             .iter()
-            .filter_map(|pos| get_tile_sprite_and_transform(*pos, &blueprint.tile_map, tileset)),
+            .filter_map(|pos| get_tile_components(*pos, &blueprint.tile_map, tileset))
     );
 
     Room { world }
@@ -352,7 +356,9 @@ fn room_from_blueprint(blueprint: RoomBlueprint, tileset: &Tileset) -> Room {
 
 pub struct GameScene {
     rooms: Vec<RoomEntry>,
-    current_entry: isize,
+    current_entry: usize,
+    cmd_bus: Receiver<RoomCommand>,
+    cmd: Sender<RoomCommand>,
 }
 
 struct RoomEntry {
@@ -368,7 +374,10 @@ struct RoomEntry {
 
 impl GameScene {
     pub fn new() -> GameScene {
+        let (cmd, cmd_bus) = channel();
         GameScene {
+            cmd,
+            cmd_bus,
             rooms: vec![RoomEntry {
                 room: Self::initial_room(),
                 position: (0, 0),
@@ -392,15 +401,21 @@ impl GameScene {
 }
 
 impl Scene for GameScene {
-    fn update(&mut self, ctx: &mut Backend, cmd: &mut Sender<SceneCommand>) -> GameResult {
+    fn update(&mut self, bk: &mut Backend, cmd: &mut Sender<SceneCommand>) -> GameResult {
         Ok(())
     }
-    fn draw(&mut self, ctx: &mut Backend) -> GameResult {
+    fn draw(&mut self, bk: &mut Backend) -> GameResult {
+        let RoomEntry {
+            position,
+            room,
+            age,
+        } = &mut self.rooms[self.current_entry];
+        room.draw(bk)?;
         Ok(())
     }
     fn on_input(
         &mut self,
-        ctx: &mut Backend,
+        bk: &mut Backend,
         button: &Button,
         state: &ButtonState,
         cmd: &mut Sender<SceneCommand>,
