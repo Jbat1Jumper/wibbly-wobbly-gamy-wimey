@@ -14,6 +14,7 @@ use legion::*;
 use pyxel::Pyxel;
 
 use crate::backend::*;
+#[macro_use]
 use crate::common::*;
 
 #[derive(Clone, Debug)]
@@ -162,18 +163,6 @@ struct AnimatedTile {
     intrinsic: bool,
     frames: Vec<usize>,
 }
-
-macro_rules! map(
-    { $($key:expr => $value:expr),+ } => {
-        {
-            let mut m = ::std::collections::HashMap::new();
-            $(
-                m.insert($key, $value);
-            )+
-            m
-        }
-     };
-);
 
 #[rustfmt::skip]
 fn base_tileset() -> Tileset {

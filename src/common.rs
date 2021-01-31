@@ -20,6 +20,19 @@ pub use Constrain::*;
 pub use Direction::*;
 pub use Rotation::*;
 
+macro_rules! map(
+    { $($key:expr => $value:expr),+ } => {
+        {
+            let mut m = ::std::collections::HashMap::new();
+            $(
+                m.insert($key, $value);
+            )+
+            m
+        }
+     };
+);
+
+
 #[derive(Clone, Copy, Debug)]
 pub enum Button {
     Start,

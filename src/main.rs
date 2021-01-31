@@ -7,7 +7,9 @@ use std::env;
 use std::path;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
+#[macro_use]
 mod common;
+#[macro_use]
 use common::*;
 mod backend;
 mod game_scene;
