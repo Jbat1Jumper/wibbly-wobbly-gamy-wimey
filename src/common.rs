@@ -149,13 +149,13 @@ impl GridWalkable for (i32, i32) {
 pub struct Position(pub Vec2);
 
 #[derive(Clone, Copy, Debug)]
-pub enum Sprite {
-    TileRef(usize, TilesetRef),
-}
+pub struct Sprite { }
+
+pub struct TileRef(pub usize, pub TilesetRef);
 
 #[derive(Clone, Copy, Debug)]
-pub enum TilesetRef {
-    PyxelFile(&'static str),
+pub struct TilesetRef {
+    pub pyxel_file: &'static str,
 }
 
 #[derive(Clone, Copy, Debug)]

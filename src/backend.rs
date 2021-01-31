@@ -97,33 +97,30 @@ impl Backend {
         self.frames
     }
 
-    pub fn draw_sprite(
+    pub fn draw_tile(
         &mut self,
-        sprite: &Sprite,
+        tile: &TileRef,
         tranform: &SpriteTransform,
         position: &Position,
     ) -> GameResult {
-        match sprite {
-            Sprite::TileRef(index, TilesetRef::PyxelFile(pyxel_file)) => {
-                let img = self.sprite_resources.get_pyxel_tile(&mut self.ggez_ctx, *index, pyxel_file)?;
+        let TileRef(index, TilesetRef { pyxel_file }) = tile;
+            let img = self.sprite_resources.get_pyxel_tile(&mut self.ggez_ctx, *index, pyxel_file)?;
 
-                let SpriteTransform { rotation, flipped } = tranform;
-                let Position(pos) = position;
+            let SpriteTransform { rotation, flipped } = tranform;
+            let Position(pos) = position;
 
-                ggez::graphics::draw(
-                    &mut self.ggez_ctx, 
-                    img, 
-                    ggez::graphics::DrawParam::default()
-                        .dest(*pos * 4.0)
-                        .offset([0.5, 0.5])
-                        .rotation(rotation.radians())
-                        .scale([4.0, 4.0])
-                )?;
+            ggez::graphics::draw(
+                &mut self.ggez_ctx, 
+                img, 
+                ggez::graphics::DrawParam::default()
+                    .dest(*pos * 4.0)
+                    .offset([0.5, 0.5])
+                    .rotation(rotation.radians())
+                    .scale([4.0, 4.0])
+            )?;
 
-                //panic!("No draw sprite me");
-                Ok(())
-            }
-        }
+            //panic!("No draw sprite me");
+            Ok(())
     }
 
     pub fn poll_events(&mut self) -> Vec<(Button, ButtonState)> {

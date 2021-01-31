@@ -114,7 +114,7 @@ fn get_tile_components(
     pos: (i32, i32),
     tile_map: &TileMap,
     tileset: &Tileset,
-) -> Option<(Sprite, SpriteTransform, Position)> {
+) -> Option<(TileRef, SpriteTransform, Position)> {
     let nh = tile_map.neighborhood(pos);
 
     for flipped in &[false, true] {
@@ -133,7 +133,7 @@ fn get_tile_components(
 
                 if fits {
                     return Some((
-                        Sprite::TileRef(*id, tileset.reference()),
+                        TileRef(*id, tileset.reference()),
                         SpriteTransform {
                             rotation: *rotation,
                             flipped: *flipped,
@@ -213,7 +213,7 @@ fn base_tileset() -> Tileset {
 
 impl Tileset {
     fn reference(&self) -> TilesetRef {
-        TilesetRef::PyxelFile(self.pyxel_file)
+        TilesetRef { pyxel_file: self.pyxel_file }
     }
 }
 
@@ -318,9 +318,9 @@ enum RoomCommand {
 }
 
 fn draw_sprites(world: &World, bk: &mut Backend) -> GameResult {
-    let mut query = <(&Sprite, &SpriteTransform, &Position)>::query();
-    for (sprite, transform, pos) in query.iter(world) {
-        bk.draw_sprite(sprite, transform, pos)?;
+    let mut query = <(&TileRef, &SpriteTransform, &Position)>::query();
+    for (tile, transform, pos) in query.iter(world) {
+        bk.draw_tile(tile, transform, pos)?;
     }
     Ok(())
 }
