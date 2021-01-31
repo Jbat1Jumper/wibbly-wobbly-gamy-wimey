@@ -151,38 +151,44 @@ impl GridWalkable for (i32, i32) {
 #[derive(Clone, Copy, Debug)]
 pub struct Position(pub Vec2);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Sprite {
-    pyxel_file: &'static str,
-    current_animation: &'static str,
-    current_animation_time: f64,
+    pub pyxel_file: &'static str,
+    pub current_animation: AnimationId,
+    pub current_animation_time: f64,
 }
 
 pub trait SpriteSheet {
-    type AnimationId;
-    type FrameId;
-    type LayerId;
-    type Duration;
-
     fn get_size(&self) -> (usize, usize);
-    fn get_animations(&self) -> Vec<Self::AnimationId>;
-    fn get_layers(&self) -> Vec<Self::LayerId>;
+    fn get_animations(&self) -> Vec<AnimationId>;
+    fn get_layers(&self) -> Vec<LayerId>;
     fn get_animation_frames(
         &self,
-        animation: &Self::AnimationId,
-    ) -> Result<Vec<(Self::FrameId, Self::Duration)>, String>;
+        animation: &AnimationId,
+    ) -> Result<Vec<(FrameId, f64)>, String>;
     fn get_frame_data_in_rgba8(
         &self,
-        frame: &Self::FrameId,
-        layer: &Self::LayerId,
+        frame: &FrameId,
+        layer: &LayerId,
     ) -> Result<Vec<u8>, String>;
+
+    fn get_frame_at(&self, animation: &AnimationId, at_time: f64) -> Result<FrameId, String> {
+        let mut t = 0.0;
+        for (frame, duration) in self.get_animation_frames(animation)?.iter() {
+            if t + duration > at_time {
+                return Ok(*frame);
+            }
+            t += duration;
+        }
+        Err(format!("Time {} out of bounds in animation {}", at_time, animation))
+    }
 }
 
+pub type AnimationId = String;
+pub type FrameId = u32;
+pub type LayerId = String;
+
 impl SpriteSheet for Pyxel {
-    type AnimationId = String;
-    type FrameId = u32;
-    type LayerId = String;
-    type Duration = f64;
 
     fn get_size(&self) -> (usize, usize) {
         (
@@ -191,7 +197,7 @@ impl SpriteSheet for Pyxel {
         )
     }
 
-    fn get_animations(&self) -> Vec<Self::AnimationId> {
+    fn get_animations(&self) -> Vec<AnimationId> {
         self.animations()
             .iter()
             .map(pyxel::Animation::name)
@@ -199,7 +205,7 @@ impl SpriteSheet for Pyxel {
             .collect()
     }
 
-    fn get_layers(&self) -> Vec<Self::LayerId> {
+    fn get_layers(&self) -> Vec<LayerId> {
         self.canvas()
             .layers()
             .iter()
@@ -210,8 +216,8 @@ impl SpriteSheet for Pyxel {
 
     fn get_animation_frames(
         &self,
-        animation: &Self::AnimationId,
-    ) -> Result<Vec<(Self::FrameId, Self::Duration)>, String> {
+        animation: &AnimationId,
+    ) -> Result<Vec<(FrameId, f64)>, String> {
         let animation = self
             .animations()
             .iter()
@@ -231,8 +237,8 @@ impl SpriteSheet for Pyxel {
 
     fn get_frame_data_in_rgba8(
         &self,
-        frame: &Self::FrameId,
-        layer: &Self::LayerId,
+        frame: &FrameId,
+        layer: &LayerId,
     ) -> Result<Vec<u8>, String> {
         let frame = *frame;
         if frame as i32 >= self.canvas().width() * self.canvas().height() {

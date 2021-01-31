@@ -97,6 +97,40 @@ impl Backend {
         self.frames
     }
 
+    pub fn draw_sprite(
+        &mut self,
+        sprite: &Sprite,
+        layer: &LayerId,
+        tranform: &SpriteTransform,
+        position: &Position,
+    ) -> GameResult {
+        let Sprite {
+            pyxel_file,
+            current_animation,
+            current_animation_time,
+        } = sprite;
+        let img = self.sprite_resources.get_pyxel_frame(
+            &mut self.ggez_ctx,
+            current_animation,
+            *current_animation_time,
+            layer,
+            pyxel_file,
+        )?;
+        let SpriteTransform { rotation, flipped } = tranform;
+        let Position(pos) = position;
+        ggez::graphics::draw(
+            &mut self.ggez_ctx,
+            img,
+            ggez::graphics::DrawParam::default()
+                .dest(*pos * 4.0)
+                .offset([0.5, 0.5])
+                .rotation(rotation.radians())
+                .scale([4.0, 4.0]),
+        )?;
+
+        Ok(())
+    }
+
     pub fn draw_tile(
         &mut self,
         tile: &TileRef,
@@ -104,23 +138,25 @@ impl Backend {
         position: &Position,
     ) -> GameResult {
         let TileRef(index, TilesetRef { pyxel_file }) = tile;
-            let img = self.sprite_resources.get_pyxel_tile(&mut self.ggez_ctx, *index, pyxel_file)?;
+        let img = self
+            .sprite_resources
+            .get_pyxel_tile(&mut self.ggez_ctx, *index, pyxel_file)?;
 
-            let SpriteTransform { rotation, flipped } = tranform;
-            let Position(pos) = position;
+        let SpriteTransform { rotation, flipped } = tranform;
+        let Position(pos) = position;
 
-            ggez::graphics::draw(
-                &mut self.ggez_ctx, 
-                img, 
-                ggez::graphics::DrawParam::default()
-                    .dest(*pos * 4.0)
-                    .offset([0.5, 0.5])
-                    .rotation(rotation.radians())
-                    .scale([4.0, 4.0])
-            )?;
+        ggez::graphics::draw(
+            &mut self.ggez_ctx,
+            img,
+            ggez::graphics::DrawParam::default()
+                .dest(*pos * 4.0)
+                .offset([0.5, 0.5])
+                .rotation(rotation.radians())
+                .scale([4.0, 4.0]),
+        )?;
 
-            //panic!("No draw sprite me");
-            Ok(())
+        //panic!("No draw sprite me");
+        Ok(())
     }
 
     pub fn poll_events(&mut self) -> Vec<(Button, ButtonState)> {
@@ -164,44 +200,86 @@ impl Backend {
 
 pub struct SpriteResources {
     pub pyxel_files: HashMap<&'static str, pyxel::Pyxel>,
-    pub images: HashMap<(&'static str, usize), ggez::graphics::Image>,
+    pub loaded_tiles: HashMap<(&'static str, usize), ggez::graphics::Image>,
+    pub loaded_frames: HashMap<(LayerId, FrameId, &'static str), ggez::graphics::Image>,
 }
 
 impl Default for SpriteResources {
     fn default() -> SpriteResources {
         SpriteResources {
             pyxel_files: HashMap::new(),
-            images: HashMap::new(),
+            loaded_tiles: HashMap::new(),
+            loaded_frames: HashMap::new(),
         }
     }
 }
 
 impl SpriteResources {
+    fn get_pyxel_frame<'a>(
+        &'a mut self,
+        ctx: &mut ggez::Context,
+        current_animation: &AnimationId,
+        current_animation_time: f64,
+        layer: &LayerId,
+        pyxel_file: &'static str,
+    ) -> GameResult<&'a ggez::graphics::Image> {
+        let file = self
+            .pyxel_files
+            .get(pyxel_file)
+            .ok_or(ggez::error::GameError::ResourceLoadError(pyxel_file.into()))?;
+
+        let frame = file
+            .get_frame_at(current_animation, current_animation_time)
+            .map_err(ggez::error::GameError::RenderError)?;
+
+        if !self.loaded_frames.contains_key(&(layer.clone(), frame, pyxel_file)) {
+            let data = file
+                .get_frame_data_in_rgba8(&frame, layer)
+                .map_err(ggez::error::GameError::ResourceLoadError)?;
+            let mut img = ggez::graphics::Image::from_rgba8(
+                ctx,
+                file.canvas().tile_width(),
+                file.canvas().tile_height(),
+                &data,
+            )?;
+            img.set_filter(ggez::graphics::FilterMode::Nearest);
+
+            self.loaded_frames
+                .insert((layer.clone(), frame, pyxel_file), img);
+        }
+
+        Ok(self.loaded_frames.get(&(layer.clone(), frame, pyxel_file)).unwrap())
+    }
 
     fn get_pyxel_tile<'a>(
         &'a mut self,
         ctx: &mut ggez::Context,
-        index: usize, 
-        pyxel_file: &'static str
+        index: usize,
+        pyxel_file: &'static str,
     ) -> GameResult<&'a ggez::graphics::Image> {
-
-        if !self.images.contains_key(&(pyxel_file, index)) {
+        if !self.loaded_tiles.contains_key(&(pyxel_file, index)) {
             if let Some(file) = self.pyxel_files.get(pyxel_file) {
-                let data: Vec<u8> = file.tileset().images()[index].to_rgba().pixels().map(|pyxel| &pyxel.0).flatten().cloned().collect();
+                let data: Vec<u8> = file.tileset().images()[index]
+                    .to_rgba()
+                    .pixels()
+                    .map(|pyxel| &pyxel.0)
+                    .flatten()
+                    .cloned()
+                    .collect();
                 let mut img = ggez::graphics::Image::from_rgba8(
                     ctx,
                     file.tileset().tile_width(),
                     file.tileset().tile_height(),
-                    &data
+                    &data,
                 )?;
                 img.set_filter(ggez::graphics::FilterMode::Nearest);
 
-                self.images.insert((pyxel_file, index), img);
+                self.loaded_tiles.insert((pyxel_file, index), img);
             } else {
                 return Err(ggez::error::GameError::ResourceLoadError(pyxel_file.into()));
             }
         }
-        Ok(self.images.get(&(pyxel_file, index)).unwrap())
+        Ok(self.loaded_tiles.get(&(pyxel_file, index)).unwrap())
     }
 }
 
