@@ -3,9 +3,9 @@ pub use std::time::Duration;
 use ggez;
 use glam::f32::Vec2;
 
+use crate::backend::*;
 use std::env;
 use std::path;
-use crate::backend::*;
 
 use std::sync::mpsc::{channel, Receiver, Sender};
 
@@ -14,7 +14,6 @@ use std::collections::{HashMap, HashSet};
 use legion::*;
 
 use pyxel::Pyxel;
-
 
 pub use Constrain::*;
 pub use Direction::*;
@@ -32,7 +31,6 @@ macro_rules! map(
      };
 );
 
-
 #[derive(Clone, Copy, Debug)]
 pub enum Button {
     Start,
@@ -47,7 +45,13 @@ pub enum Button {
 pub trait Scene {
     fn update(&mut self, ctx: &mut Backend, cmd: &mut Sender<SceneCommand>) -> GameResult;
     fn draw(&mut self, ctx: &mut Backend) -> GameResult;
-    fn on_input(&mut self, ctx: &mut Backend, button: &Button, state: &ButtonState, cmd: &mut Sender<SceneCommand>) -> GameResult;
+    fn on_input(
+        &mut self,
+        ctx: &mut Backend,
+        button: &Button,
+        state: &ButtonState,
+        cmd: &mut Sender<SceneCommand>,
+    ) -> GameResult;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -64,7 +68,6 @@ pub enum ButtonState {
     Pressed,
     Released,
 }
-
 
 #[derive(Clone, Copy, Debug)]
 pub enum Constrain<T> {
@@ -149,10 +152,125 @@ impl GridWalkable for (i32, i32) {
 pub struct Position(pub Vec2);
 
 #[derive(Clone, Copy, Debug)]
-pub struct Sprite { }
+pub struct Sprite {
+    pyxel_file: &'static str,
+    current_animation: &'static str,
+    current_animation_time: f64,
+}
+
+pub trait SpriteSheet {
+    type AnimationId;
+    type FrameId;
+    type LayerId;
+    type Duration;
+
+    fn get_size(&self) -> (usize, usize);
+    fn get_animations(&self) -> Vec<Self::AnimationId>;
+    fn get_layers(&self) -> Vec<Self::LayerId>;
+    fn get_animation_frames(
+        &self,
+        animation: &Self::AnimationId,
+    ) -> Result<Vec<(Self::FrameId, Self::Duration)>, String>;
+    fn get_frame_data_in_rgba8(
+        &self,
+        frame: &Self::FrameId,
+        layer: &Self::LayerId,
+    ) -> Result<Vec<u8>, String>;
+}
+
+impl SpriteSheet for Pyxel {
+    type AnimationId = String;
+    type FrameId = u32;
+    type LayerId = String;
+    type Duration = f64;
+
+    fn get_size(&self) -> (usize, usize) {
+        (
+            self.canvas().tile_width().into(),
+            self.canvas().tile_height().into(),
+        )
+    }
+
+    fn get_animations(&self) -> Vec<Self::AnimationId> {
+        self.animations()
+            .iter()
+            .map(pyxel::Animation::name)
+            .cloned()
+            .collect()
+    }
+
+    fn get_layers(&self) -> Vec<Self::LayerId> {
+        self.canvas()
+            .layers()
+            .iter()
+            .map(pyxel::Layer::name)
+            .cloned()
+            .collect()
+    }
+
+    fn get_animation_frames(
+        &self,
+        animation: &Self::AnimationId,
+    ) -> Result<Vec<(Self::FrameId, Self::Duration)>, String> {
+        let animation = self
+            .animations()
+            .iter()
+            .find(|a| a.name() == animation)
+            .ok_or(format!("No animation found: {}", animation))?;
+
+        let b = animation.base_tile();
+        let r = animation
+            .frame_duration_multipliers()
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, duration)| (b as u32 + i as u32, duration))
+            .collect();
+        Ok(r)
+    }
+
+    fn get_frame_data_in_rgba8(
+        &self,
+        frame: &Self::FrameId,
+        layer: &Self::LayerId,
+    ) -> Result<Vec<u8>, String> {
+        let frame = *frame;
+        if frame as i32 >= self.canvas().width() * self.canvas().height() {
+            return Err(format!("Frame {} is out of bounds", frame));
+        }
+
+        let layer = self
+            .canvas()
+            .layers()
+            .iter()
+            .find(|l| l.name() == layer)
+            .ok_or(format!("No layer found: {}", layer))?;
+
+        let tile_width = self.canvas().tile_width() as u32;
+        let tile_height = self.canvas().tile_height() as u32;
+        let (x, y) = (
+            frame / self.canvas().width() as u32,
+            frame % self.canvas().width() as u32,
+        );
+
+        use image::GenericImageView;
+
+        Ok(layer
+            .image()
+            .to_rgba()
+            .view(x * tile_width, y * tile_height, tile_width, tile_height)
+            .pixels()
+            // https://raw.githubusercontent.com/rochacbruno/rust_memes/master/img/lisa.jpg
+            .map(|p| Vec::from(p.2.0))  
+            .flatten()
+            .collect())
+    }
+}
 
 pub struct TileRef(pub usize, pub TilesetRef);
 
+// This could be an enum again if there are different tileset file types.  For instance: A pyxel
+// file, a plain image file, an array of rgba8 images or an external url.
 #[derive(Clone, Copy, Debug)]
 pub struct TilesetRef {
     pub pyxel_file: &'static str,
@@ -163,7 +281,6 @@ pub struct SpriteTransform {
     pub rotation: Rotation,
     pub flipped: bool,
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Text {

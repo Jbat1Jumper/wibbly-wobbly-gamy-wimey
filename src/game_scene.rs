@@ -139,7 +139,9 @@ fn get_tile_components(
                             flipped: *flipped,
                         },
                         Position(Vec2::new(
-                                pos.0 as f32 * tileset.tile_width as f32, pos.1 as f32 * tileset.tile_height as f32))
+                            pos.0 as f32 * tileset.tile_width as f32,
+                            pos.1 as f32 * tileset.tile_height as f32,
+                        )),
                     ));
                 }
             }
@@ -213,7 +215,9 @@ fn base_tileset() -> Tileset {
 
 impl Tileset {
     fn reference(&self) -> TilesetRef {
-        TilesetRef { pyxel_file: self.pyxel_file }
+        TilesetRef {
+            pyxel_file: self.pyxel_file,
+        }
     }
 }
 
@@ -317,7 +321,7 @@ enum RoomCommand {
     PlayerDied,
 }
 
-fn draw_sprites(world: &World, bk: &mut Backend) -> GameResult {
+fn draw_tiles(world: &World, bk: &mut Backend) -> GameResult {
     let mut query = <(&TileRef, &SpriteTransform, &Position)>::query();
     for (tile, transform, pos) in query.iter(world) {
         bk.draw_tile(tile, transform, pos)?;
@@ -325,16 +329,19 @@ fn draw_sprites(world: &World, bk: &mut Backend) -> GameResult {
     Ok(())
 }
 
+fn draw_sprites(world: &World, bk: &mut Backend) -> GameResult {
+    panic!("Not implemented draw_sprites");
+}
+
+fn update_sprites(world: &mut World) {
+    panic!("Not implemented update_sprites");
+}
 
 impl Room {
     fn draw(&self, bk: &mut Backend) -> GameResult {
+        draw_tiles(&self.world, bk)?;
         draw_sprites(&self.world, bk)?;
-
-
-
-
         // query and draw room entities:
-        // - draw tiles
         // - draw shadows?
         // - draw entities
         // - draw effects
@@ -344,6 +351,12 @@ impl Room {
     fn update(&mut self, event: RoomInput, cmd: Sender<RoomCommand>) {
         // all room systems
         // - player enters/exits handling
+        match event {
+            RoomInput::Frame(duration) => {
+                update_sprites(&mut self.world);
+            }
+            _ => (),
+        }
     }
 }
 
@@ -352,7 +365,7 @@ fn room_from_blueprint(blueprint: RoomBlueprint, tileset: &Tileset) -> Room {
     world.extend(
         iter_positions(blueprint.size)
             .iter()
-            .filter_map(|pos| get_tile_components(*pos, &blueprint.tile_map, tileset))
+            .filter_map(|pos| get_tile_components(*pos, &blueprint.tile_map, tileset)),
     );
 
     Room { world }
@@ -393,14 +406,11 @@ impl GameScene {
 
     fn initial_room() -> Room {
         let params = RoomParams {
-                connection_constrains: map! {
-                    Up => MustBe(Connection::Common)
-                },
-            };
-        let mut bp = SimpleRoomCreator::create_room(
-            &params,
-            &mut Rng,
-        );
+            connection_constrains: map! {
+                Up => MustBe(Connection::Common)
+            },
+        };
+        let mut bp = SimpleRoomCreator::create_room(&params, &mut Rng);
         SimpleRoomCreator::populate(&mut bp, &params, &mut Rng);
         room_from_blueprint(bp, &base_tileset())
     }
