@@ -29,8 +29,21 @@ impl Game {
         let (command_bus_sender, command_bus) = channel();
         Ok(Game {
             scene: Box::new(intro::Intro::new()),
-            backend: Backend::new(ggez_stuff)?,
-            command_bus, 
+            backend: Backend::new(
+                ggez_stuff,
+                SpriteResources {
+                    pyxel_files: map! {
+                        "base.pyxel" => {
+                            pyxel::open("resources/base.pyxel")
+                            // pyxel::load_from_memory(
+                            //     include_bytes!("../resources/base.pyxel")
+                            // )
+                            .expect("Problems loading base.pyxel")
+                        }
+                    },
+                },
+            )?,
+            command_bus,
             command_bus_sender,
         })
     }
@@ -48,13 +61,19 @@ impl Game {
 
     fn handle_button_events(&mut self, button_events: Vec<(Button, ButtonState)>) -> GameResult {
         for (button, state) in button_events.iter() {
-            self.scene.on_input(&mut self.backend, button, state, &mut self.command_bus_sender)?
+            self.scene.on_input(
+                &mut self.backend,
+                button,
+                state,
+                &mut self.command_bus_sender,
+            )?
         }
         Ok(())
     }
 
     fn update(&mut self) -> GameResult {
-        self.scene.update(&mut self.backend, &mut self.command_bus_sender)
+        self.scene
+            .update(&mut self.backend, &mut self.command_bus_sender)
     }
 
     fn draw(&mut self) -> GameResult {
@@ -74,11 +93,12 @@ impl Game {
             SceneRef("intro") => Box::new(intro::Intro::new()),
             SceneRef("main_menu") => Box::new(main_menu::MainMenu::new()),
             SceneRef("game_scene") => Box::new(game_scene::GameScene::new()),
-            SceneRef(name) => return Err(
-                ggez::GameError::ResourceLoadError(
-                    format!("Error trying to create scene: {}.", name)
-                )
-            )
+            SceneRef(name) => {
+                return Err(ggez::GameError::ResourceLoadError(format!(
+                    "Error trying to create scene: {}.",
+                    name
+                )))
+            }
         };
         Ok(scene)
     }

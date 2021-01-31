@@ -1713,8 +1713,7 @@ dependencies = [
 [[package]]
 name = "pyxel"
 version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1aa7bc74f8ac53181d7b09d8fb3a19b8f522fa6a7631bd58f56798239d62b9b"
+source = "git+https://github.com/Jbat1Jumper/pyxel#1f09c9173ccbb86d331231cbfeb25c0bed5949ba"
 dependencies = [
  "derivative 1.0.4",
  "hex",

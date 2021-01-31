@@ -22,16 +22,19 @@ pub struct Backend
     ggez_ctx: ggez::Context,
     ggez_events_loop: ggez::event::EventsLoop,
     text_resources: TextResources,
+    sprite_resources: SpriteResources,
     frames: usize,
 }
 
 impl Backend {
     pub fn new(
         (ggez_ctx, ggez_events_loop): (ggez::Context, ggez::event::EventsLoop),
+        sprite_resources: SpriteResources,
     ) -> GameResult<Backend> {
         Ok(Backend {
             ggez_ctx,
             ggez_events_loop,
+            sprite_resources,
             frames: 0,
             text_resources: TextResources {
                 loaded_fonts: HashMap::new(),
@@ -96,7 +99,17 @@ impl Backend {
         self.frames
     }
 
-    pub fn draw_sprite(&mut self, sprite: &Sprite, tranform: &SpriteTransform, position: &Position) -> GameResult {
+    pub fn draw_sprite(
+        &mut self, 
+        sprite: &Sprite, 
+        tranform: &SpriteTransform, 
+        position: &Position
+    ) -> GameResult {
+        match sprite {
+            Sprite::TileRef(index, TilesetRef::PyxelFile(pyxel_file)) => {
+
+            }
+        }
         panic!("No draw sprite me");
     }
 
@@ -137,6 +150,10 @@ impl Backend {
         });
         button_events
     }
+}
+
+pub struct SpriteResources {
+    pub pyxel_files: HashMap<&'static str, pyxel::Pyxel>,
 }
 
 pub struct TextResources {
