@@ -109,6 +109,16 @@ impl Rotation {
     pub fn all() -> [Rotation; 4] {
         [Deg0, Deg90, Deg180, Deg270]
     }
+
+    pub fn radians(&self) -> f32 {
+        use std::f32::consts::PI;
+        match self {
+            Deg0 => 0.0,
+            Deg90 => 0.5 * PI,
+            Deg180 => PI,
+            Deg270 => 1.5 * PI,
+        }
+    }
 }
 
 pub trait Rotable {

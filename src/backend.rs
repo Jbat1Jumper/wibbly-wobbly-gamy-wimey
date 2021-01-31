@@ -16,9 +16,7 @@ trait Game {
     type SceneRef;
 }
 
-
-pub struct Backend
-{
+pub struct Backend {
     ggez_ctx: ggez::Context,
     ggez_events_loop: ggez::event::EventsLoop,
     text_resources: TextResources,
@@ -100,17 +98,32 @@ impl Backend {
     }
 
     pub fn draw_sprite(
-        &mut self, 
-        sprite: &Sprite, 
-        tranform: &SpriteTransform, 
-        position: &Position
+        &mut self,
+        sprite: &Sprite,
+        tranform: &SpriteTransform,
+        position: &Position,
     ) -> GameResult {
         match sprite {
             Sprite::TileRef(index, TilesetRef::PyxelFile(pyxel_file)) => {
+                let img = self.sprite_resources.get_pyxel_tile(&mut self.ggez_ctx, *index, pyxel_file)?;
 
+                let SpriteTransform { rotation, flipped } = tranform;
+                let Position(pos) = position;
+
+                ggez::graphics::draw(
+                    &mut self.ggez_ctx, 
+                    img, 
+                    ggez::graphics::DrawParam::default()
+                        .dest(*pos * 4.0)
+                        .offset([0.5, 0.5])
+                        .rotation(rotation.radians())
+                        .scale([4.0, 4.0])
+                )?;
+
+                //panic!("No draw sprite me");
+                Ok(())
             }
         }
-        panic!("No draw sprite me");
     }
 
     pub fn poll_events(&mut self) -> Vec<(Button, ButtonState)> {
@@ -154,6 +167,45 @@ impl Backend {
 
 pub struct SpriteResources {
     pub pyxel_files: HashMap<&'static str, pyxel::Pyxel>,
+    pub images: HashMap<(&'static str, usize), ggez::graphics::Image>,
+}
+
+impl Default for SpriteResources {
+    fn default() -> SpriteResources {
+        SpriteResources {
+            pyxel_files: HashMap::new(),
+            images: HashMap::new(),
+        }
+    }
+}
+
+impl SpriteResources {
+
+    fn get_pyxel_tile<'a>(
+        &'a mut self,
+        ctx: &mut ggez::Context,
+        index: usize, 
+        pyxel_file: &'static str
+    ) -> GameResult<&'a ggez::graphics::Image> {
+
+        if !self.images.contains_key(&(pyxel_file, index)) {
+            if let Some(file) = self.pyxel_files.get(pyxel_file) {
+                let data: Vec<u8> = file.tileset().images()[index].to_rgba().pixels().map(|pyxel| &pyxel.0).flatten().cloned().collect();
+                let mut img = ggez::graphics::Image::from_rgba8(
+                    ctx,
+                    file.tileset().tile_width(),
+                    file.tileset().tile_height(),
+                    &data
+                )?;
+                img.set_filter(ggez::graphics::FilterMode::Nearest);
+
+                self.images.insert((pyxel_file, index), img);
+            } else {
+                return Err(ggez::error::GameError::ResourceLoadError(pyxel_file.into()));
+            }
+        }
+        Ok(self.images.get(&(pyxel_file, index)).unwrap())
+    }
 }
 
 pub struct TextResources {

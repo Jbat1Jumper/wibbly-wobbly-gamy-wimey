@@ -1717,6 +1717,7 @@ source = "git+https://github.com/Jbat1Jumper/pyxel#1f09c9173ccbb86d331231cbfeb25
 dependencies = [
  "derivative 1.0.4",
  "hex",
+ "image",
  "semver",
  "serde",
  "serde_json",

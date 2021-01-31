@@ -131,15 +131,17 @@ fn get_tile_components(
                     .zip(nh.iter())
                     .all(|(constrain, tile)| constrain.satisfies(tile));
 
-                return Some((
-                    Sprite::TileRef(*id, tileset.reference()),
-                    SpriteTransform {
-                        rotation: *rotation,
-                        flipped: *flipped,
-                    },
-                    Position(Vec2::new(
-                            pos.0 as f32 * tileset.tile_width as f32, pos.1 as f32 * tileset.tile_height as f32))
-                ));
+                if fits {
+                    return Some((
+                        Sprite::TileRef(*id, tileset.reference()),
+                        SpriteTransform {
+                            rotation: *rotation,
+                            flipped: *flipped,
+                        },
+                        Position(Vec2::new(
+                                pos.0 as f32 * tileset.tile_width as f32, pos.1 as f32 * tileset.tile_height as f32))
+                    ));
+                }
             }
         }
     }
@@ -191,6 +193,11 @@ fn base_tileset() -> Tileset {
             7 => [
                 x,              x,              x,
                 x,              MustBe(Ground), x,
+                x,              x,              x,
+            ],
+            2 => [
+                x,              x,              x,
+                x,              MustBe(Empty), x,
                 x,              x,              x,
             ]
         },
@@ -254,7 +261,7 @@ enum Connection {
 
 trait RoomCreator {
     fn create_room(params: &RoomParams, rng: &mut Rng) -> RoomBlueprint;
-    fn populate(&mut self, room: &mut RoomBlueprint, params: &RoomParams, rng: &mut Rng);
+    fn populate(room: &mut RoomBlueprint, params: &RoomParams, rng: &mut Rng);
 }
 
 struct SimpleRoomCreator;
@@ -282,8 +289,16 @@ impl RoomCreator for SimpleRoomCreator {
         }
     }
 
-    fn populate(&mut self, room: &mut RoomBlueprint, params: &RoomParams, rng: &mut Rng) {
-        room.tile_map.set_at((0, 0), Tile::Ground);
+    fn populate(room: &mut RoomBlueprint, params: &RoomParams, rng: &mut Rng) {
+        room.tile_map.set_at((0, 0), Tile::Wall);
+        room.tile_map.set_at((1, 0), Tile::Wall);
+        room.tile_map.set_at((2, 0), Tile::Wall);
+        room.tile_map.set_at((0, 1), Tile::Wall);
+        room.tile_map.set_at((1, 1), Tile::Ground);
+        room.tile_map.set_at((2, 1), Tile::Wall);
+        room.tile_map.set_at((0, 2), Tile::Wall);
+        room.tile_map.set_at((1, 2), Tile::Wall);
+        room.tile_map.set_at((2, 2), Tile::Wall);
     }
 }
 
@@ -377,14 +392,16 @@ impl GameScene {
     }
 
     fn initial_room() -> Room {
-        let bp = SimpleRoomCreator::create_room(
-            &RoomParams {
+        let params = RoomParams {
                 connection_constrains: map! {
                     Up => MustBe(Connection::Common)
                 },
-            },
+            };
+        let mut bp = SimpleRoomCreator::create_room(
+            &params,
             &mut Rng,
         );
+        SimpleRoomCreator::populate(&mut bp, &params, &mut Rng);
         room_from_blueprint(bp, &base_tileset())
     }
 }

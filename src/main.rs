@@ -41,6 +41,7 @@ impl Game {
                             .expect("Problems loading base.pyxel")
                         }
                     },
+                    ..SpriteResources::default()
                 },
             )?,
             command_bus,
