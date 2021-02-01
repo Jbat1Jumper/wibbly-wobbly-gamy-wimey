@@ -303,7 +303,7 @@ impl TextResources {
         font: &Font,
     ) -> GameResult<&'a graphics::Font> {
         if !self.loaded_fonts.contains_key(font) {
-            let gfont = graphics::Font::new(ctx, font.resource_path())?;
+            let gfont = graphics::Font::new_glyph_font_bytes(ctx, font.truetype_font_bytes())?;
             self.loaded_fonts.insert(*font, gfont);
         }
         Ok(self.loaded_fonts.get(font).unwrap())

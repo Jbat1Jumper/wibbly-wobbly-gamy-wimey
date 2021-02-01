@@ -34,10 +34,10 @@ impl Game {
                 SpriteResources {
                     pyxel_files: map! {
                         "base.pyxel" => {
-                            pyxel::open("resources/base.pyxel")
-                            // pyxel::load_from_memory(
-                            //     include_bytes!("../resources/base.pyxel")
-                            // )
+                            //pyxel::open("resources/base.pyxel")
+                            pyxel::load_from_memory(
+                                include_bytes!("../resources/base.pyxel")
+                            )
                             .expect("Problems loading base.pyxel")
                         }
                     },

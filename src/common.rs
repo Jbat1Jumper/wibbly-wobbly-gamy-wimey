@@ -332,9 +332,9 @@ pub enum Font {
 }
 
 impl Font {
-    pub fn resource_path(&self) -> &'static str {
+    pub fn truetype_font_bytes(&self) -> &[u8] {
         match self {
-            Font::LiberationMono => "/LiberationMono-Regular.ttf",
+            Font::LiberationMono => include_bytes!("../resources/LiberationMono-Regular.ttf"),
         }
     }
 }
