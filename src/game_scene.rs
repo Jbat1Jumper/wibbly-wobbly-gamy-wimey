@@ -150,9 +150,6 @@ fn get_tile_components(
     None
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Frame(u32);
-
 struct Tileset {
     pyxel_file: &'static str,
     tiles: HashMap<usize, [Constrain<Tile>; 9]>,
@@ -294,15 +291,23 @@ impl RoomCreator for SimpleRoomCreator {
     }
 
     fn populate(room: &mut RoomBlueprint, params: &RoomParams, rng: &mut Rng) {
-        room.tile_map.set_at((0, 0), Tile::Wall);
-        room.tile_map.set_at((1, 0), Tile::Wall);
-        room.tile_map.set_at((2, 0), Tile::Wall);
-        room.tile_map.set_at((0, 1), Tile::Wall);
-        room.tile_map.set_at((1, 1), Tile::Ground);
-        room.tile_map.set_at((2, 1), Tile::Wall);
-        room.tile_map.set_at((0, 2), Tile::Wall);
-        room.tile_map.set_at((1, 2), Tile::Wall);
-        room.tile_map.set_at((2, 2), Tile::Wall);
+        for x in (0..room.size.0) {
+            for y in (0..room.size.1) {
+                room.tile_map.set_at((x, y), Tile::Ground);
+            }
+        }
+        for x in (0..room.size.0) {
+            room.tile_map.set_at((x, 0), Tile::Wall);
+        }
+        for x in (0..room.size.0) {
+            room.tile_map.set_at((x, room.size.1 - 1), Tile::Wall);
+        }
+        for y in (0..room.size.1) {
+            room.tile_map.set_at((0, y), Tile::Wall);
+        }
+        for y in (0..room.size.1) {
+            room.tile_map.set_at((room.size.0 - 1, y), Tile::Wall);
+        }
     }
 }
 
@@ -330,11 +335,30 @@ fn draw_tiles(world: &World, bk: &mut Backend) -> GameResult {
 }
 
 fn draw_sprites(world: &World, bk: &mut Backend) -> GameResult {
-    panic!("Not implemented draw_sprites");
+    let mut query = <(&Sprite, &SpriteTransform, &Position)>::query();
+    for (sprite, transform, pos) in query.iter(world) {
+        bk.draw_sprite(sprite, &"shadows".into(), transform, pos);
+    }
+    for (sprite, transform, pos) in query.iter(world) {
+        bk.draw_sprite(sprite, &"main".into(), transform, pos);
+    }
+    Ok(())
 }
 
-fn update_sprites(world: &mut World) {
-    panic!("Not implemented update_sprites");
+fn update_sprites(
+    world: &mut World,
+    duration: Duration,
+    sprite_sheets: &HashMap<&'static str, Pyxel>,
+) {
+    let mut query = <&mut Sprite>::query();
+    for sprite in query.iter_mut(world) {
+        let delta = duration.as_secs_f64();
+        if let Some(sprite_sheet) = sprite_sheets.get(&sprite.pyxel_file) {
+            if let Ok(duration) = sprite_sheet.get_animation_duration(&sprite.current_animation) {
+                sprite.current_animation_time = (sprite.current_animation_time + delta) % duration;
+            }
+        }
+    }
 }
 
 impl Room {
@@ -348,12 +372,13 @@ impl Room {
         Ok(())
     }
 
-    fn update(&mut self, event: RoomInput, cmd: Sender<RoomCommand>) {
+    fn update(&mut self, event: RoomInput, cmd: Sender<RoomCommand>, bk: &mut Backend) {
         // all room systems
         // - player enters/exits handling
         match event {
             RoomInput::Frame(duration) => {
-                update_sprites(&mut self.world);
+                let mut res = Resources::default();
+                update_sprites(&mut self.world, duration, bk.sprite_sheets_provider());
             }
             _ => (),
         }
@@ -412,12 +437,32 @@ impl GameScene {
         };
         let mut bp = SimpleRoomCreator::create_room(&params, &mut Rng);
         SimpleRoomCreator::populate(&mut bp, &params, &mut Rng);
-        room_from_blueprint(bp, &base_tileset())
+        let mut room = room_from_blueprint(bp, &base_tileset());
+        room.world.push((
+            Sprite {
+                pyxel_file: "base.pyxel",
+                current_animation: "idle".into(),
+                current_animation_time: 0.0,
+            },
+            SpriteTransform::default(),
+            Position(Vec2::new(30.0, 30.0)),
+        ));
+        room
     }
 }
 
 impl Scene for GameScene {
     fn update(&mut self, bk: &mut Backend, cmd: &mut Sender<SceneCommand>) -> GameResult {
+        let RoomEntry {
+            position,
+            room,
+            age,
+        } = &mut self.rooms[self.current_entry];
+        room.update(
+            RoomInput::Frame(bk.last_frame_duration()),
+            self.cmd.clone(),
+            bk,
+        );
         Ok(())
     }
     fn draw(&mut self, bk: &mut Backend) -> GameResult {

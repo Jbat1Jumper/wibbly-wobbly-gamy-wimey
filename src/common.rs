@@ -166,6 +166,14 @@ pub trait SpriteSheet {
         &self,
         animation: &AnimationId,
     ) -> Result<Vec<(FrameId, f64)>, String>;
+
+    fn get_animation_duration(
+        &self,
+        animation: &AnimationId,
+    ) -> Result<f64, String> {
+        Ok(self.get_animation_frames(animation)?.iter().map(|(_, d)| d).sum())
+    }
+
     fn get_frame_data_in_rgba8(
         &self,
         frame: &FrameId,
@@ -237,10 +245,10 @@ impl SpriteSheet for Pyxel {
 
     fn get_frame_data_in_rgba8(
         &self,
-        frame: &FrameId,
-        layer: &LayerId,
+        frame_id: &FrameId,
+        layer_id: &LayerId,
     ) -> Result<Vec<u8>, String> {
-        let frame = *frame;
+        let frame = *frame_id;
         if frame as i32 >= self.canvas().width() * self.canvas().height() {
             return Err(format!("Frame {} is out of bounds", frame));
         }
@@ -249,17 +257,22 @@ impl SpriteSheet for Pyxel {
             .canvas()
             .layers()
             .iter()
-            .find(|l| l.name() == layer)
-            .ok_or(format!("No layer found: {}", layer))?;
+            .find(|l| l.name() == layer_id)
+            .ok_or(format!("No layer found: {}", layer_id))?;
 
         let tile_width = self.canvas().tile_width() as u32;
         let tile_height = self.canvas().tile_height() as u32;
+        let width = self.canvas().width() as u32 / tile_width;
         let (x, y) = (
-            frame / self.canvas().width() as u32,
-            frame % self.canvas().width() as u32,
+            frame % width,
+            frame / width,
         );
 
         use image::GenericImageView;
+
+        //panic!(
+        //    "tile_width: {}, tile_height: {}, xy: {:?}, layer: {}, frame: {}", 
+        //    tile_width, tile_height, (x, y), layer_id, frame);
 
         Ok(layer
             .image()
@@ -286,6 +299,14 @@ pub struct TilesetRef {
 pub struct SpriteTransform {
     pub rotation: Rotation,
     pub flipped: bool,
+}
+impl Default for SpriteTransform {
+    fn default() -> SpriteTransform {
+        SpriteTransform {
+            rotation: Deg0,
+            flipped: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -41,8 +41,16 @@ impl Backend {
         })
     }
 
+    pub fn last_frame_duration(&self) -> Duration {
+        ggez::timer::delta(&self.ggez_ctx)
+    }
+
     pub fn continuing(&self) -> bool {
         self.ggez_ctx.continuing
+    }
+
+    pub fn sprite_sheets_provider(&self) -> &HashMap<&'static str, pyxel::Pyxel> {
+        &self.sprite_resources.pyxel_files
     }
 
     fn key_binding(key: ggez::input::keyboard::KeyCode) -> Option<Button> {
