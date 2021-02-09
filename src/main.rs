@@ -15,6 +15,7 @@ mod backend;
 mod game_scene;
 mod intro;
 mod main_menu;
+mod pubsub;
 use backend::*;
 
 struct Game {
