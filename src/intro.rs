@@ -21,27 +21,26 @@ pub struct Intro {
 }
 
 impl Intro {
-    pub fn new() -> Intro {
-        Intro {
-            remaining: Duration::from_secs(1),
-        }
+    pub fn init(world: &mut World, resources: &mut Resources) -> Schedule {
+        resources.insert(RemainingIntroTime(Duration::from_secs(1)));
+
+        Schedule::builder()
+            .add_system(update_intro_system())
+            .build()
     }
 }
 
-impl Scene for Intro {
-    fn update(&mut self, ctx: &mut Backend, cmd: &mut Sender<SceneCommand>) -> GameResult {
-        let delta = ctx.delta_time();
-        if self.remaining > delta {
-            self.remaining -= delta;
-        } else {
-            cmd.send(SceneCommand::GoTo(SceneRef("main_menu")));
-        }
-        Ok(())
-    }
-    fn draw(&mut self, ctx: &mut Backend) -> GameResult {
-        Ok(())
-    }
-    fn on_input(&mut self, ctx: &mut Backend, button: &Button, state: &ButtonState, cmd: &mut Sender<SceneCommand>) -> GameResult {
-        Ok(())
+struct RemainingIntroTime(Duration);
+
+#[system]
+fn update_intro(
+    #[resource] LastFrameDuration(delta): &LastFrameDuration,
+    #[resource] RemainingIntroTime(remaining): &mut RemainingIntroTime,
+    #[resource] cmd: &mut Vec<SceneCommand>,
+) {
+    if *remaining > *delta {
+        *remaining -= *delta;
+    } else {
+        cmd.push(SceneCommand::GoTo(SceneRef("main_menu")));
     }
 }

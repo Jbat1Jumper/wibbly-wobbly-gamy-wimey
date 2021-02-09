@@ -1,4 +1,5 @@
 use crate::common::*;
+use core::ops::Deref;
 use ggez;
 use ggez::event::{run as launch, EventHandler};
 use ggez::graphics;
@@ -16,7 +17,7 @@ trait Game {
     type SceneRef;
 }
 
-pub struct Backend {
+pub struct GgezBackend {
     ggez_ctx: ggez::Context,
     ggez_events_loop: ggez::event::EventsLoop,
     text_resources: TextResources,
@@ -24,153 +25,12 @@ pub struct Backend {
     frames: usize,
 }
 
-impl Backend {
-    pub fn new(
-        (ggez_ctx, ggez_events_loop): (ggez::Context, ggez::event::EventsLoop),
-        sprite_resources: SpriteResources,
-    ) -> GameResult<Backend> {
-        Ok(Backend {
-            ggez_ctx,
-            ggez_events_loop,
-            sprite_resources,
-            frames: 0,
-            text_resources: TextResources {
-                loaded_fonts: HashMap::new(),
-                rendered_texts: HashMap::new(),
-            },
-        })
-    }
-
-    pub fn last_frame_duration(&self) -> Duration {
-        ggez::timer::delta(&self.ggez_ctx)
-    }
-
-    pub fn continuing(&self) -> bool {
-        self.ggez_ctx.continuing
-    }
-
-    pub fn sprite_sheets_provider(&self) -> &HashMap<&'static str, pyxel::Pyxel> {
-        &self.sprite_resources.pyxel_files
-    }
-
-    fn key_binding(key: ggez::input::keyboard::KeyCode) -> Option<Button> {
-        use ggez::input::keyboard::KeyCode;
-        match key {
-            KeyCode::Escape => Some(Button::Start),
-            KeyCode::W => Some(Button::Up),
-            KeyCode::A => Some(Button::Left),
-            KeyCode::S => Some(Button::Down),
-            KeyCode::D => Some(Button::Right),
-            KeyCode::J => Some(Button::A),
-            KeyCode::K => Some(Button::B),
-            _ => None,
-        }
-    }
-
-    fn state_binding(state: ggez::event::winit_event::ElementState) -> ButtonState {
-        match state {
-            ggez::event::winit_event::ElementState::Pressed => ButtonState::Pressed,
-            ggez::event::winit_event::ElementState::Released => ButtonState::Released,
-        }
-    }
-
-    pub fn draw_text(&mut self, text: &Text, position: &Position) -> GameResult {
-        let Position(pos) = position;
-        let rtext = self.text_resources.render_text(&mut self.ggez_ctx, text)?;
-        graphics::draw(&mut self.ggez_ctx, rtext, (pos.clone(),))
-    }
-
-    pub fn delta_time(&mut self) -> Duration {
-        ggez::timer::delta(&self.ggez_ctx)
-    }
-
-    pub fn quit(&mut self) -> GameResult {
-        ggez::event::quit(&mut self.ggez_ctx);
-        Ok(())
-    }
-    pub fn clear(&mut self) -> GameResult {
-        graphics::clear(&mut self.ggez_ctx, [0.1, 0.2, 0.3, 1.0].into());
-        Ok(())
-    }
-
-    pub fn get_fps(&mut self) -> f64 {
-        ggez::timer::fps(&self.ggez_ctx)
-    }
-
-    pub fn present(&mut self) -> GameResult {
-        graphics::present(&mut self.ggez_ctx)
-    }
-
-    pub fn current_frame(&self) -> usize {
-        self.frames
-    }
-
-    pub fn draw_sprite(
-        &mut self,
-        sprite: &Sprite,
-        layer: &LayerId,
-        tranform: &SpriteTransform,
-        position: &Position,
-    ) -> GameResult {
-        let Sprite {
-            pyxel_file,
-            current_animation,
-            current_animation_time,
-        } = sprite;
-        let img = self.sprite_resources.get_pyxel_frame(
-            &mut self.ggez_ctx,
-            current_animation,
-            *current_animation_time,
-            layer,
-            pyxel_file,
-        )?;
-        let SpriteTransform { rotation, flipped } = tranform;
-        let Position(pos) = position;
-        ggez::graphics::draw(
-            &mut self.ggez_ctx,
-            img,
-            ggez::graphics::DrawParam::default()
-                .dest(*pos * 4.0)
-                .offset([0.5, 0.5])
-                .rotation(rotation.radians())
-                .scale([4.0, 4.0]),
-        )?;
-
-        Ok(())
-    }
-
-    pub fn draw_tile(
-        &mut self,
-        tile: &TileRef,
-        tranform: &SpriteTransform,
-        position: &Position,
-    ) -> GameResult {
-        let TileRef(index, TilesetRef { pyxel_file }) = tile;
-        let img = self
-            .sprite_resources
-            .get_pyxel_tile(&mut self.ggez_ctx, *index, pyxel_file)?;
-
-        let SpriteTransform { rotation, flipped } = tranform;
-        let Position(pos) = position;
-
-        ggez::graphics::draw(
-            &mut self.ggez_ctx,
-            img,
-            ggez::graphics::DrawParam::default()
-                .dest(*pos * 4.0)
-                .offset([0.5, 0.5])
-                .rotation(rotation.radians())
-                .scale([4.0, 4.0]),
-        )?;
-
-        //panic!("No draw sprite me");
-        Ok(())
-    }
-
-    pub fn poll_events(&mut self) -> Vec<(Button, ButtonState)> {
+impl PlugIn for GgezBackend {
+    fn init(&mut self, world: &mut World, resources: &mut Resources) {}
+    fn update(&mut self, world: &mut World, resources: &mut Resources) {
         let mut button_events: Vec<(Button, ButtonState)> = vec![];
         self.frames += 1;
-        let Backend {
+        let GgezBackend {
             ggez_ctx,
             ggez_events_loop,
             ..
@@ -202,12 +62,194 @@ impl Backend {
                 x => (), //println!("Device event fired: {:?}", x),
             }
         });
-        button_events
+
+        let MustQuit(mut must_quit) = *resources.get_mut_or_default();
+        must_quit = must_quit || !self.ggez_ctx.continuing;
+        resources.insert(MustQuit(must_quit));
+
+        resources.insert(button_events);
+        let cmds: Vec<SceneCommand> = vec![];
+        resources.insert(cmds);
+        resources.insert(LastFrameDuration(ggez::timer::delta(&self.ggez_ctx)));
+        resources.insert(CurrentFPS(ggez::timer::fps(&self.ggez_ctx)));
+        resources.insert(CurrentFrame(self.frames));
+    }
+
+    fn draw(&mut self, world: &World, resources: &Resources) {
+        graphics::clear(&mut self.ggez_ctx, [0.1, 0.2, 0.3, 1.0].into());
+
+        let mut query = <(&Position, &Text)>::query();
+        for (position, text) in query.iter(world) {
+            let Position(pos) = position;
+            let rtext = self
+                .text_resources
+                .render_text(&mut self.ggez_ctx, text)
+                .expect("Error drawing text");
+
+            graphics::draw(&mut self.ggez_ctx, rtext, (pos.clone(),));
+        }
+
+        // TODO: The ordering and layers in this part are hardcoded
+        {
+            let pyxel_files = resources.get_mut().expect("No pyxel files");
+
+            let mut query = <(&TileRef, &SpriteTransform, &Position)>::query();
+            for (tile, transform, pos) in query.iter(world) {
+                self.draw_tile(tile, transform, &*pyxel_files, pos)
+                    .expect("Error drawing tile");
+            }
+
+            let mut query = <(&Sprite, &SpriteTransform, &Position)>::query();
+            for (sprite, transform, pos) in query.iter(world) {
+                self.draw_sprite(sprite, &"shadows".into(), transform, &*pyxel_files, pos);
+            }
+            for (sprite, transform, pos) in query.iter(world) {
+                self.draw_sprite(sprite, &"main".into(), transform, &*pyxel_files, pos);
+            }
+        }
+
+        let CurrentFrame(frame) = *resources.get().expect("Error reading current frame");
+        if (frame % 100) == 0 {
+            let CurrentFPS(fps) = *resources.get().expect("Error reading fps");
+            println!("FPS: {}", fps);
+        }
+
+        graphics::present(&mut self.ggez_ctx);
+    }
+}
+
+pub trait PlugIn {
+    fn init(&mut self, world: &mut World, resources: &mut Resources);
+
+    fn update(&mut self, world: &mut World, resources: &mut Resources);
+
+    fn draw(&mut self, world: &World, resources: &Resources);
+}
+
+pub struct MustQuit(pub bool);
+
+impl Default for MustQuit {
+    fn default() -> Self {
+        MustQuit(false)
+    }
+}
+
+pub struct LastFrameDuration(pub Duration);
+
+pub struct PyxelFiles(pub HashMap<&'static str, pyxel::Pyxel>);
+
+pub struct CurrentFPS(pub f64);
+
+pub struct CurrentFrame(pub usize);
+
+impl GgezBackend {
+    pub fn new(
+        (ggez_ctx, ggez_events_loop): (ggez::Context, ggez::event::EventsLoop),
+        sprite_resources: SpriteResources,
+    ) -> GameResult<GgezBackend> {
+        Ok(GgezBackend {
+            ggez_ctx,
+            ggez_events_loop,
+            sprite_resources,
+            frames: 0,
+            text_resources: TextResources {
+                loaded_fonts: HashMap::new(),
+                rendered_texts: HashMap::new(),
+            },
+        })
+    }
+
+    fn key_binding(key: ggez::input::keyboard::KeyCode) -> Option<Button> {
+        use ggez::input::keyboard::KeyCode;
+        match key {
+            KeyCode::Escape => Some(Button::Start),
+            KeyCode::W => Some(Button::Up),
+            KeyCode::A => Some(Button::Left),
+            KeyCode::S => Some(Button::Down),
+            KeyCode::D => Some(Button::Right),
+            KeyCode::J => Some(Button::A),
+            KeyCode::K => Some(Button::B),
+            _ => None,
+        }
+    }
+
+    fn state_binding(state: ggez::event::winit_event::ElementState) -> ButtonState {
+        match state {
+            ggez::event::winit_event::ElementState::Pressed => ButtonState::Pressed,
+            ggez::event::winit_event::ElementState::Released => ButtonState::Released,
+        }
+    }
+
+    fn draw_sprite(
+        &mut self,
+        sprite: &Sprite,
+        layer: &LayerId,
+        tranform: &SpriteTransform,
+        pyxel_files: &PyxelFiles,
+        position: &Position,
+    ) -> GameResult {
+        let Sprite {
+            pyxel_file,
+            current_animation,
+            current_animation_time,
+        } = sprite;
+        let img = self.sprite_resources.get_pyxel_frame(
+            &mut self.ggez_ctx,
+            current_animation,
+            *current_animation_time,
+            layer,
+            pyxel_files,
+            pyxel_file,
+        )?;
+        let SpriteTransform { rotation, flipped } = tranform;
+        let Position(pos) = position;
+        ggez::graphics::draw(
+            &mut self.ggez_ctx,
+            img,
+            ggez::graphics::DrawParam::default()
+                .dest(*pos * 4.0)
+                .offset([0.5, 0.5])
+                .rotation(rotation.radians())
+                .scale([4.0, 4.0]),
+        )?;
+
+        Ok(())
+    }
+
+    fn draw_tile(
+        &mut self,
+        tile: &TileRef,
+        tranform: &SpriteTransform,
+        pyxel_files: &PyxelFiles,
+        position: &Position,
+    ) -> GameResult {
+        let TileRef(index, TilesetRef { pyxel_file }) = tile;
+        let img = self.sprite_resources.get_pyxel_tile(
+            &mut self.ggez_ctx,
+            *index,
+            pyxel_files,
+            pyxel_file,
+        )?;
+
+        let SpriteTransform { rotation, flipped } = tranform;
+        let Position(pos) = position;
+
+        ggez::graphics::draw(
+            &mut self.ggez_ctx,
+            img,
+            ggez::graphics::DrawParam::default()
+                .dest(*pos * 4.0)
+                .offset([0.5, 0.5])
+                .rotation(rotation.radians())
+                .scale([4.0, 4.0]),
+        )?;
+
+        //panic!("No draw sprite me");
+        Ok(())
     }
 }
 
 pub struct SpriteResources {
-    pub pyxel_files: HashMap<&'static str, pyxel::Pyxel>,
     pub loaded_tiles: HashMap<(&'static str, usize), ggez::graphics::Image>,
     pub loaded_frames: HashMap<(LayerId, FrameId, &'static str), ggez::graphics::Image>,
 }
@@ -215,7 +257,6 @@ pub struct SpriteResources {
 impl Default for SpriteResources {
     fn default() -> SpriteResources {
         SpriteResources {
-            pyxel_files: HashMap::new(),
             loaded_tiles: HashMap::new(),
             loaded_frames: HashMap::new(),
         }
@@ -229,10 +270,11 @@ impl SpriteResources {
         current_animation: &AnimationId,
         current_animation_time: f64,
         layer: &LayerId,
+        pyxel_files: &PyxelFiles,
         pyxel_file: &'static str,
     ) -> GameResult<&'a ggez::graphics::Image> {
-        let file = self
-            .pyxel_files
+        let file = pyxel_files
+            .0
             .get(pyxel_file)
             .ok_or(ggez::error::GameError::ResourceLoadError(pyxel_file.into()))?;
 
@@ -240,7 +282,10 @@ impl SpriteResources {
             .get_frame_at(current_animation, current_animation_time)
             .map_err(ggez::error::GameError::RenderError)?;
 
-        if !self.loaded_frames.contains_key(&(layer.clone(), frame, pyxel_file)) {
+        if !self
+            .loaded_frames
+            .contains_key(&(layer.clone(), frame, pyxel_file))
+        {
             let data = file
                 .get_frame_data_in_rgba8(&frame, layer)
                 .map_err(ggez::error::GameError::ResourceLoadError)?;
@@ -256,17 +301,21 @@ impl SpriteResources {
                 .insert((layer.clone(), frame, pyxel_file), img);
         }
 
-        Ok(self.loaded_frames.get(&(layer.clone(), frame, pyxel_file)).unwrap())
+        Ok(self
+            .loaded_frames
+            .get(&(layer.clone(), frame, pyxel_file))
+            .unwrap())
     }
 
     fn get_pyxel_tile<'a>(
         &'a mut self,
         ctx: &mut ggez::Context,
         index: usize,
+        pyxel_files: &PyxelFiles,
         pyxel_file: &'static str,
     ) -> GameResult<&'a ggez::graphics::Image> {
         if !self.loaded_tiles.contains_key(&(pyxel_file, index)) {
-            if let Some(file) = self.pyxel_files.get(pyxel_file) {
+            if let Some(file) = pyxel_files.0.get(pyxel_file) {
                 let data: Vec<u8> = file.tileset().images()[index]
                     .to_rgba()
                     .pixels()

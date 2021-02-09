@@ -16,6 +16,7 @@ use pyxel::Pyxel;
 use crate::backend::*;
 #[macro_use]
 use crate::common::*;
+use crate::pubsub::{Publication, Subscription};
 
 #[derive(Clone, Debug)]
 struct TileMap {
@@ -326,74 +327,21 @@ enum RoomCommand {
     PlayerDied,
 }
 
-fn draw_tiles(world: &World, bk: &mut Backend) -> GameResult {
-    let mut query = <(&TileRef, &SpriteTransform, &Position)>::query();
-    for (tile, transform, pos) in query.iter(world) {
-        bk.draw_tile(tile, transform, pos)?;
-    }
-    Ok(())
-}
-
-fn draw_sprites(world: &World, bk: &mut Backend) -> GameResult {
-    let mut query = <(&Sprite, &SpriteTransform, &Position)>::query();
-    for (sprite, transform, pos) in query.iter(world) {
-        bk.draw_sprite(sprite, &"shadows".into(), transform, pos);
-    }
-    for (sprite, transform, pos) in query.iter(world) {
-        bk.draw_sprite(sprite, &"main".into(), transform, pos);
-    }
-    Ok(())
-}
-
-fn update_sprites(
-    world: &mut World,
-    duration: Duration,
-    sprite_sheets: &HashMap<&'static str, Pyxel>,
-) {
-    let mut query = <&mut Sprite>::query();
-    for sprite in query.iter_mut(world) {
-        let delta = duration.as_secs_f64();
-        if let Some(sprite_sheet) = sprite_sheets.get(&sprite.pyxel_file) {
-            if let Ok(duration) = sprite_sheet.get_animation_duration(&sprite.current_animation) {
-                sprite.current_animation_time = (sprite.current_animation_time + delta) % duration;
-            }
-        }
-    }
-}
-
-impl Room {
-    fn draw(&self, bk: &mut Backend) -> GameResult {
-        draw_tiles(&self.world, bk)?;
-        draw_sprites(&self.world, bk)?;
-        // query and draw room entities:
-        // - draw shadows?
-        // - draw entities
-        // - draw effects
-        Ok(())
-    }
-
-    fn update(&mut self, event: RoomInput, cmd: Sender<RoomCommand>, bk: &mut Backend) {
-        // all room systems
-        // - player enters/exits handling
-        match event {
-            RoomInput::Frame(duration) => {
-                let mut res = Resources::default();
-                update_sprites(&mut self.world, duration, bk.sprite_sheets_provider());
-            }
-            _ => (),
-        }
-    }
-}
-
-fn room_from_blueprint(blueprint: RoomBlueprint, tileset: &Tileset) -> Room {
-    let mut world = World::default();
+fn populate_room_from_blueprint(world: &mut World, blueprint: &RoomBlueprint, tileset: &Tileset) {
     world.extend(
         iter_positions(blueprint.size)
             .iter()
             .filter_map(|pos| get_tile_components(*pos, &blueprint.tile_map, tileset)),
     );
-
-    Room { world }
+    world.push((
+        Sprite {
+            pyxel_file: "base.pyxel",
+            current_animation: "idle".into(),
+            current_animation_time: 0.0,
+        },
+        SpriteTransform::default(),
+        Position(Vec2::new(30.0, 30.0)),
+    ));
 }
 
 pub struct GameScene {
@@ -405,7 +353,7 @@ pub struct GameScene {
 
 struct RoomEntry {
     position: (isize, isize),
-    room: Room,
+    room: RoomBlueprint,
     // this could be really interesing with ttl instead of age.
     // if ttl runs to 0 that means that the room was not visited for
     // enough time to discard it and also to randomize stuff in it.
@@ -414,22 +362,37 @@ struct RoomEntry {
     age: usize,
 }
 
-impl GameScene {
-    pub fn new() -> GameScene {
-        let (cmd, cmd_bus) = channel();
-        GameScene {
-            cmd,
-            cmd_bus,
-            rooms: vec![RoomEntry {
-                room: Self::initial_room(),
-                position: (0, 0),
-                age: 0,
-            }],
-            current_entry: 0,
+
+struct RoomsEntries(pub Vec<RoomEntry>);
+pub struct CurrentRoom(pub usize);
+
+#[system(for_each)]
+fn update_sprites(
+    sprite: &mut Sprite,
+    #[resource] LastFrameDuration(duration): &LastFrameDuration,
+    #[resource] sprite_sheets: &PyxelFiles,
+) {
+    let delta = duration.as_secs_f64();
+    if let Some(sprite_sheet) = sprite_sheets.0.get(&sprite.pyxel_file) {
+        if let Ok(duration) = sprite_sheet.get_animation_duration(&sprite.current_animation) {
+            sprite.current_animation_time = (sprite.current_animation_time + delta) % duration;
         }
     }
+}
 
-    fn initial_room() -> Room {
+#[system]
+fn update_room(
+    #[resource] command_buffer: &Vec<RoomCommand>,
+) {
+    // TODO: Do something
+}
+
+
+
+impl GameScene {
+    pub fn init(world: &mut World, resources: &mut Resources) -> Schedule {
+        let font = Font::LiberationMono;
+
         let params = RoomParams {
             connection_constrains: map! {
                 Up => MustBe(Connection::Common)
@@ -437,50 +400,20 @@ impl GameScene {
         };
         let mut bp = SimpleRoomCreator::create_room(&params, &mut Rng);
         SimpleRoomCreator::populate(&mut bp, &params, &mut Rng);
-        let mut room = room_from_blueprint(bp, &base_tileset());
-        room.world.push((
-            Sprite {
-                pyxel_file: "base.pyxel",
-                current_animation: "idle".into(),
-                current_animation_time: 0.0,
-            },
-            SpriteTransform::default(),
-            Position(Vec2::new(30.0, 30.0)),
-        ));
-        room
-    }
-}
+        populate_room_from_blueprint(world, &bp, &base_tileset());
 
-impl Scene for GameScene {
-    fn update(&mut self, bk: &mut Backend, cmd: &mut Sender<SceneCommand>) -> GameResult {
-        let RoomEntry {
-            position,
-            room,
-            age,
-        } = &mut self.rooms[self.current_entry];
-        room.update(
-            RoomInput::Frame(bk.last_frame_duration()),
-            self.cmd.clone(),
-            bk,
-        );
-        Ok(())
-    }
-    fn draw(&mut self, bk: &mut Backend) -> GameResult {
-        let RoomEntry {
-            position,
-            room,
-            age,
-        } = &mut self.rooms[self.current_entry];
-        room.draw(bk)?;
-        Ok(())
-    }
-    fn on_input(
-        &mut self,
-        bk: &mut Backend,
-        button: &Button,
-        state: &ButtonState,
-        cmd: &mut Sender<SceneCommand>,
-    ) -> GameResult {
-        Ok(())
+        let cmds: Vec<RoomCommand> = vec![];
+        resources.insert(cmds);
+        resources.insert(CurrentRoom(0));
+        resources.insert(vec![RoomEntry {
+            room: bp,
+            position: (0, 0),
+            age: 0,
+        }]);
+
+        Schedule::builder()
+            .add_system(update_sprites_system())
+            .add_system(update_room_system())
+            .build()
     }
 }

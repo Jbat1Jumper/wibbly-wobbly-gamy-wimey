@@ -43,11 +43,11 @@ pub enum Button {
 }
 
 pub trait Scene {
-    fn update(&mut self, ctx: &mut Backend, cmd: &mut Sender<SceneCommand>) -> GameResult;
-    fn draw(&mut self, ctx: &mut Backend) -> GameResult;
+    fn update(&mut self, ctx: &mut GgezBackend, cmd: &mut Sender<SceneCommand>) -> GameResult;
+    fn draw(&mut self, ctx: &mut GgezBackend) -> GameResult;
     fn on_input(
         &mut self,
-        ctx: &mut Backend,
+        ctx: &mut GgezBackend,
         button: &Button,
         state: &ButtonState,
         cmd: &mut Sender<SceneCommand>,
