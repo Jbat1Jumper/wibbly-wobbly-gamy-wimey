@@ -50,7 +50,7 @@ fn update_main_menu(
 ) {
     for (button, _state) in input.iter() {
         match button {
-            Button::A => cmd.push(SceneCommand::GoTo(SceneRef("game_scene"))),
+            Button::A => cmd.push(SceneCommand::GoTo(SceneRef("game"))),
             Button::Start => cmd.push(SceneCommand::Exit),
             _ => (),
         }

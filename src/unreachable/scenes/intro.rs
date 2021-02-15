@@ -23,6 +23,13 @@ impl Intro {
     pub fn init(world: &mut World, resources: &mut Resources) -> Schedule {
         resources.insert(RemainingIntroTime(Duration::from_secs(1)));
 
+        let font = Font::LiberationMono;
+        world.push((
+            Text::new("SEGA", font, 32),
+            Position(Vec2::new(90.0, 90.0)),
+        ));
+
+
         Schedule::builder()
             .add_system(update_intro_system())
             .build()

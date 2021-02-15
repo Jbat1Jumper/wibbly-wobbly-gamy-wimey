@@ -389,6 +389,8 @@ fn update_room(
 
 impl GameScene {
     pub fn init(world: &mut World, resources: &mut Resources) -> Schedule {
+
+        println!("Init game scene");
         let font = Font::LiberationMono;
 
         let params = RoomParams {

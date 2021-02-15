@@ -88,6 +88,8 @@ impl Plugin for GgezBackend {
         }
 
         // TODO: The ordering and layers in this part are hardcoded
+        let mut tiles_count = 0;
+        let mut sprites_count = 0;
         {
             let pyxel_files = resources.get_mut().expect("No pyxel files");
 
@@ -95,21 +97,27 @@ impl Plugin for GgezBackend {
             for (tile, transform, pos) in query.iter(world) {
                 self.draw_tile(tile, transform, &*pyxel_files, pos)
                     .expect("Error drawing tile");
+                tiles_count += 1;
             }
 
             let mut query = <(&Sprite, &SpriteTransform, &Position)>::query();
+
             for (sprite, transform, pos) in query.iter(world) {
                 self.draw_sprite(sprite, &"shadows".into(), transform, &*pyxel_files, pos);
+                sprites_count += 1;
             }
             for (sprite, transform, pos) in query.iter(world) {
                 self.draw_sprite(sprite, &"main".into(), transform, &*pyxel_files, pos);
+                sprites_count += 1;
             }
+
         }
 
         let CurrentFrame(frame) = *resources.get().expect("Error reading current frame");
         if (frame % 100) == 0 {
             let CurrentFPS(fps) = *resources.get().expect("Error reading fps");
             println!("FPS: {}", fps);
+            println!("Draw {} tiles and {} sprites.", tiles_count, sprites_count);
         }
 
         graphics::present(&mut self.ggez_ctx);
