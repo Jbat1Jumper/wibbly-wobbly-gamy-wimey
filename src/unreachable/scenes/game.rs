@@ -13,10 +13,8 @@ use legion::*;
 
 use pyxel::Pyxel;
 
-use crate::backend::*;
 #[macro_use]
 use crate::common::*;
-use crate::pubsub::{Publication, Subscription};
 
 #[derive(Clone, Debug)]
 struct TileMap {

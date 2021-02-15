@@ -1,4 +1,3 @@
-use ggez;
 use glam::f32::Vec2;
 
 use std::env;
@@ -13,9 +12,7 @@ use legion::*;
 
 use pyxel::Pyxel;
 
-use crate::backend::*;
 use crate::common::*;
-use crate::pubsub::{Publication, Subscription};
 
 pub struct MainMenu {
     world: World,

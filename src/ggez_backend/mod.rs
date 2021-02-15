@@ -13,9 +13,7 @@ use std::path;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 
-trait Game {
-    type SceneRef;
-}
+use crate::fw::Plugin;
 
 pub struct GgezBackend {
     ggez_ctx: ggez::Context,
@@ -25,7 +23,7 @@ pub struct GgezBackend {
     frames: usize,
 }
 
-impl PlugIn for GgezBackend {
+impl Plugin for GgezBackend {
     fn init(&mut self, world: &mut World, resources: &mut Resources) {}
     fn update(&mut self, world: &mut World, resources: &mut Resources) {
         let mut button_events: Vec<(Button, ButtonState)> = vec![];
@@ -117,30 +115,6 @@ impl PlugIn for GgezBackend {
         graphics::present(&mut self.ggez_ctx);
     }
 }
-
-pub trait PlugIn {
-    fn init(&mut self, world: &mut World, resources: &mut Resources);
-
-    fn update(&mut self, world: &mut World, resources: &mut Resources);
-
-    fn draw(&mut self, world: &World, resources: &Resources);
-}
-
-pub struct MustQuit(pub bool);
-
-impl Default for MustQuit {
-    fn default() -> Self {
-        MustQuit(false)
-    }
-}
-
-pub struct LastFrameDuration(pub Duration);
-
-pub struct PyxelFiles(pub HashMap<&'static str, pyxel::Pyxel>);
-
-pub struct CurrentFPS(pub f64);
-
-pub struct CurrentFrame(pub usize);
 
 impl GgezBackend {
     pub fn new(

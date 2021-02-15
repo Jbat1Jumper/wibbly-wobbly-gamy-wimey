@@ -1,9 +1,7 @@
 pub use std::time::Duration;
 
-use ggez;
 use glam::f32::Vec2;
 
-use crate::backend::*;
 use std::env;
 use std::path;
 
@@ -42,17 +40,34 @@ pub enum Button {
     Down,
 }
 
-pub trait Scene {
-    fn update(&mut self, ctx: &mut GgezBackend, cmd: &mut Sender<SceneCommand>) -> GameResult;
-    fn draw(&mut self, ctx: &mut GgezBackend) -> GameResult;
-    fn on_input(
-        &mut self,
-        ctx: &mut GgezBackend,
-        button: &Button,
-        state: &ButtonState,
-        cmd: &mut Sender<SceneCommand>,
-    ) -> GameResult;
+pub struct LastFrameDuration(pub Duration);
+
+pub struct MustQuit(pub bool);
+
+impl Default for MustQuit {
+    fn default() -> Self {
+        MustQuit(false)
+    }
 }
+
+pub struct PyxelFiles(pub HashMap<&'static str, pyxel::Pyxel>);
+
+pub struct CurrentFPS(pub f64);
+
+pub struct CurrentFrame(pub usize);
+
+
+// pub trait Scene {
+//     fn update(&mut self, ctx: &mut GgezBackend, cmd: &mut Sender<SceneCommand>) -> GameResult;
+//     fn draw(&mut self, ctx: &mut GgezBackend) -> GameResult;
+//     fn on_input(
+//         &mut self,
+//         ctx: &mut GgezBackend,
+//         button: &Button,
+//         state: &ButtonState,
+//         cmd: &mut Sender<SceneCommand>,
+//     ) -> GameResult;
+// }
 
 #[derive(Clone, Copy, Debug)]
 pub enum SceneCommand {
@@ -334,7 +349,7 @@ pub enum Font {
 impl Font {
     pub fn truetype_font_bytes(&self) -> &[u8] {
         match self {
-            Font::LiberationMono => include_bytes!("../resources/LiberationMono-Regular.ttf"),
+            Font::LiberationMono => include_bytes!("resources/LiberationMono-Regular.ttf"),
         }
     }
 }

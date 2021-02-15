@@ -13,7 +13,6 @@ use legion::*;
 
 use pyxel::Pyxel;
 
-use crate::backend::*;
 use crate::common::*;
 
 pub struct Intro {
