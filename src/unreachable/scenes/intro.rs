@@ -25,7 +25,7 @@ impl Intro {
 
         let font = Font::LiberationMono;
         world.push((
-            Text::new("SEGA", font, 32),
+            Text::new("SOGA", font, 32),
             Position(Vec2::new(90.0, 90.0)),
         ));
 
