@@ -13,6 +13,25 @@ use legion::*;
 
 use pyxel::Pyxel;
 
+pub use glam_ext::*;
+
+pub mod glam_ext {
+    use glam::f32::*;
+    pub fn vec2_left() -> Vec2 {
+        vec2(-1.0, 0.0)
+    }
+    pub fn vec2_right() -> Vec2 {
+        vec2(1.0, 0.0)
+    }
+    pub fn vec2_up() -> Vec2 {
+        vec2(0.0, -1.0)
+    }
+    pub fn vec2_down() -> Vec2 {
+        vec2(0.0, 1.0)
+    }
+}
+
+
 pub use Constrain::*;
 pub use Direction::*;
 pub use Rotation::*;

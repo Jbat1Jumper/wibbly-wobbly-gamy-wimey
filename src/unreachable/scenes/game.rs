@@ -462,10 +462,10 @@ fn update_joystick_controlled_vehicles(
 ) {
     for (b, bs) in input.iter() {
         let direction = match b {
-            Button::Down => Vec2::new(0.0, 1.0),
-            Button::Up => Vec2::new(0.0, -1.0),
-            Button::Left => Vec2::new(-1.0, 0.0),
-            Button::Right => Vec2::new(1.0, 0.0),
+            Button::Down => vec2_down(),
+            Button::Up => vec2_up(),
+            Button::Left => vec2_left(),
+            Button::Right => vec2_right(),
             _ => Vec2::new(0.0, 0.0),
         };
 
