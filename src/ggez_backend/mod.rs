@@ -110,7 +110,6 @@ impl Plugin for GgezBackend {
                 self.draw_sprite(sprite, &"main".into(), transform, &*pyxel_files, pos);
                 sprites_count += 1;
             }
-
         }
 
         let CurrentFrame(frame) = *resources.get().expect("Error reading current frame");

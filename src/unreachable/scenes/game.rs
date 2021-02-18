@@ -1,5 +1,5 @@
 use ggez;
-use glam::f32::Vec2;
+use glam::f32::*;
 
 use std::env;
 use std::path;
@@ -404,7 +404,8 @@ impl GameScene {
 
         Schedule::builder()
             .add_system(update_game_scene_system())
-            .add_system(update_sprites_system())
+            .add_system(update_chabon_sprites_system())
+            .add_system(update_sprites_system_that_should_be_in_common_mod_system())
             .add_system(update_room_system())
             .add_system(move_vehicles_system())
             .add_system(update_joystick_controlled_vehicles_system())
@@ -426,7 +427,45 @@ fn update_game_scene(
 }
 
 #[system(for_each)]
-fn update_sprites(
+fn update_chabon_sprites(
+    chabon: &ChabonKind,
+    vehicle: &Vehicle,
+    sprite: &mut Sprite,
+    #[resource] LastFrameDuration(duration): &LastFrameDuration,
+    #[resource] sprite_sheets: &PyxelFiles,
+    #[resource] CurrentFrame(frame): &CurrentFrame,
+) {
+    let dir = vec![
+        ("left", vec2_left()),
+        ("right", vec2_right()),
+        ("up", vec2_up()),
+        ("down", vec2_down()),
+    ]
+    .into_iter()
+    .map(|(name, target_dir)| (name, target_dir.distance(vehicle.direction)))
+    .min_by_key(|(_name, distance)| (distance * 100.0) as i32)
+    .unwrap()
+    .0;
+
+    let state = if vehicle.force.length_squared() > 0.01 {
+        "walk"
+    } else {
+        "idle"
+    };
+
+    let new_animation = format!("{}_{}", dir, state);
+    if sprite.current_animation != new_animation {
+        sprite.current_animation = new_animation;
+        sprite.current_animation_time = 0.0;
+    }
+
+    if frame % 100 == 0 {
+        println!("current_animation = {}", sprite.current_animation);
+    }
+}
+
+#[system(for_each)]
+fn update_sprites_system_that_should_be_in_common_mod(
     sprite: &mut Sprite,
     #[resource] LastFrameDuration(duration): &LastFrameDuration,
     #[resource] sprite_sheets: &PyxelFiles,
@@ -450,7 +489,10 @@ fn move_vehicles(
     vehicle: &mut Vehicle,
     #[resource] LastFrameDuration(duration): &LastFrameDuration,
 ) {
-    position.0 += vehicle.force * duration.as_secs_f32();
+    if vehicle.force.length_squared() > 0.01 {
+        position.0 += vehicle.force * duration.as_secs_f32();
+        vehicle.direction = vehicle.force.normalize();
+    }
     vehicle.force = Vec2::new(0.0, 0.0);
 }
 
