@@ -9,12 +9,39 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::collections::{HashMap, HashSet};
 
+use legion::systems::CommandBuffer;
 use legion::*;
 
 use pyxel::Pyxel;
 
 #[macro_use]
 use crate::common::*;
+
+#[derive(Clone, Copy, Debug)]
+enum ChabonKind {
+    Player,
+    Blob,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct JoystickControlledVehicle {
+    stick: Vec2,
+}
+
+fn prototype_player(w: &mut World) -> Entity {
+    w.push((
+        ChabonKind::Player,
+        Position(Vec2::new(30.0, 30.0)),
+        Vehicle::default(),
+        JoystickControlledVehicle::default(),
+        Sprite {
+            pyxel_file: "base.pyxel",
+            current_animation: "idle".into(),
+            current_animation_time: 0.0,
+        },
+        SpriteTransform::default(),
+    ))
+}
 
 #[derive(Clone, Debug)]
 struct TileMap {
@@ -195,7 +222,7 @@ fn base_tileset() -> Tileset {
             ],
             2 => [
                 x,              x,              x,
-                x,              MustBe(Empty), x,
+                x,              MustBe(Empty),  x,
                 x,              x,              x,
             ]
         },
@@ -310,10 +337,6 @@ impl RoomCreator for SimpleRoomCreator {
     }
 }
 
-struct Room {
-    world: World,
-}
-
 enum RoomInput {
     Frame(Duration),
     Button(Button, ButtonState),
@@ -331,15 +354,7 @@ fn populate_room_from_blueprint(world: &mut World, blueprint: &RoomBlueprint, ti
             .iter()
             .filter_map(|pos| get_tile_components(*pos, &blueprint.tile_map, tileset)),
     );
-    world.push((
-        Sprite {
-            pyxel_file: "base.pyxel",
-            current_animation: "idle".into(),
-            current_animation_time: 0.0,
-        },
-        SpriteTransform::default(),
-        Position(Vec2::new(30.0, 30.0)),
-    ));
+    prototype_player(world);
 }
 
 pub struct GameScene {
@@ -360,36 +375,12 @@ struct RoomEntry {
     age: usize,
 }
 
-
 struct RoomsEntries(pub Vec<RoomEntry>);
+
 pub struct CurrentRoom(pub usize);
-
-#[system(for_each)]
-fn update_sprites(
-    sprite: &mut Sprite,
-    #[resource] LastFrameDuration(duration): &LastFrameDuration,
-    #[resource] sprite_sheets: &PyxelFiles,
-) {
-    let delta = duration.as_secs_f64();
-    if let Some(sprite_sheet) = sprite_sheets.0.get(&sprite.pyxel_file) {
-        if let Ok(duration) = sprite_sheet.get_animation_duration(&sprite.current_animation) {
-            sprite.current_animation_time = (sprite.current_animation_time + delta) % duration;
-        }
-    }
-}
-
-#[system]
-fn update_room(
-    #[resource] command_buffer: &Vec<RoomCommand>,
-) {
-    // TODO: Do something
-}
-
-
 
 impl GameScene {
     pub fn init(world: &mut World, resources: &mut Resources) -> Schedule {
-
         println!("Init game scene");
         let font = Font::LiberationMono;
 
@@ -412,8 +403,86 @@ impl GameScene {
         }]);
 
         Schedule::builder()
+            .add_system(update_game_scene_system())
             .add_system(update_sprites_system())
             .add_system(update_room_system())
+            .add_system(move_vehicles_system())
+            .add_system(update_joystick_controlled_vehicles_system())
             .build()
     }
+}
+
+#[system]
+fn update_game_scene(
+    #[resource] cmd: &mut Vec<SceneCommand>,
+    #[resource] input: &Vec<(Button, ButtonState)>,
+) {
+    for (button, _state) in input.iter() {
+        match button {
+            Button::Start => cmd.push(SceneCommand::Exit),
+            _ => (),
+        }
+    }
+}
+
+#[system(for_each)]
+fn update_sprites(
+    sprite: &mut Sprite,
+    #[resource] LastFrameDuration(duration): &LastFrameDuration,
+    #[resource] sprite_sheets: &PyxelFiles,
+) {
+    let delta = duration.as_secs_f64();
+    if let Some(sprite_sheet) = sprite_sheets.0.get(&sprite.pyxel_file) {
+        if let Ok(duration) = sprite_sheet.get_animation_duration(&sprite.current_animation) {
+            sprite.current_animation_time = (sprite.current_animation_time + delta) % duration;
+        }
+    }
+}
+
+#[system]
+fn update_room(#[resource] command_buffer: &Vec<RoomCommand>) {
+    // TODO: Do something
+}
+
+#[system(for_each)]
+fn move_vehicles(
+    position: &mut Position,
+    vehicle: &mut Vehicle,
+    #[resource] LastFrameDuration(duration): &LastFrameDuration,
+) {
+    position.0 += vehicle.force * duration.as_secs_f32();
+    vehicle.force = Vec2::new(0.0, 0.0);
+}
+
+#[system(for_each)]
+fn update_joystick_controlled_vehicles(
+    controller: &mut JoystickControlledVehicle,
+    vehicle: &mut Vehicle,
+    #[resource] input: &Vec<(Button, ButtonState)>,
+) {
+    for (b, bs) in input.iter() {
+        let direction = match b {
+            Button::Down => Vec2::new(0.0, 1.0),
+            Button::Up => Vec2::new(0.0, -1.0),
+            Button::Left => Vec2::new(-1.0, 0.0),
+            Button::Right => Vec2::new(1.0, 0.0),
+            _ => Vec2::new(0.0, 0.0),
+        };
+
+        let polarity = match bs {
+            ButtonState::Pressed => 1.0,
+            ButtonState::Released => -1.0,
+        };
+
+        controller.stick += direction * polarity;
+        if controller.stick.distance(Vec2::zero()) > 0.01 {
+            controller.stick = Vec2::new(
+                // TODO: Change to .clamp() when on rust-1.50
+                controller.stick.x.min(1.0).max(-1.0),
+                controller.stick.y.min(1.0).max(-1.0),
+            );
+        }
+    }
+
+    vehicle.force += controller.stick * vehicle.speed;
 }

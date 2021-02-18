@@ -30,6 +30,28 @@ macro_rules! map(
 );
 
 #[derive(Clone, Copy, Debug)]
+pub struct Vehicle {
+    pub force: Vec2,
+    pub speed: f32,
+    // direction: f64,
+    // force: f64,
+}
+
+impl Default for Vehicle {
+    fn default() -> Self {
+        Vehicle {
+            force: Vec2::new(0.0, 0.0),
+            speed: 100.0,
+        }
+    }
+}
+
+pub enum Shape {
+    Circle(f32),
+    Square(f32),
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum Button {
     Start,
     A,
