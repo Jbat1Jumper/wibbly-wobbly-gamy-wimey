@@ -49,9 +49,15 @@ impl Plugin for GgezBackend {
                                 ..
                             },
                         ..
-                    } => match Self::key_binding(keycode) {
-                        Some(button) => button_events.push((button, Self::state_binding(state))),
-                        None => (),
+                    } => {
+                        if ggez::input::keyboard::is_key_repeated(&ggez_ctx) {
+                            ()
+                        } else {
+                            match Self::key_binding(keycode) {
+                                Some(button) => button_events.push((button, Self::state_binding(state))),
+                                None => (),
+                            }
+                        }
                     },
                     // `CloseRequested` and `KeyboardInput` events won't appear here.
                     x => (), //println!("Other window event fired: {:?}", x),
