@@ -41,7 +41,7 @@ fn prototype_player(w: &mut World) -> Entity {
             current_animation_time: 0.0,
         },
         SpriteTransform::default(),
-        RigidBody2D::new(Shape::AABB(10.0, 10.0)),
+        RigidBody2D::new(Shape::Circle(4.0), false),
     ))
 }
 
@@ -142,12 +142,12 @@ fn get_tile_components(
     pos: (i32, i32),
     tile_map: &TileMap,
     tileset: &Tileset,
-) -> Option<(TileRef, SpriteTransform, Position, RigidBody2D)> {
+) -> Option<(TileRef, SpriteTransform, Position, Tile)> {
     let nh = tile_map.neighborhood(pos);
 
     for flipped in &[false, true] {
         for rotation in &Rotation::all() {
-            for (id, constrains) in tileset.tiles.iter() {
+            for (id, constrains) in tileset.tile_constrains.iter() {
                 let constrains = if *flipped {
                     constrains.clone().flip_horizontally()
                 } else {
@@ -170,10 +170,7 @@ fn get_tile_components(
                             pos.0 as f32 * tileset.tile_width as f32,
                             pos.1 as f32 * tileset.tile_height as f32,
                         )),
-                        RigidBody2D::new(Shape::AABB(
-                            tileset.tile_width as f32,
-                            tileset.tile_height as f32,
-                        )),
+                        tile_map.at(pos),
                     ));
                 }
             }
@@ -182,9 +179,32 @@ fn get_tile_components(
     None
 }
 
+fn create_tile_colliders(world: &mut World, tileset: &Tileset) {
+    let mut query = <(Entity, &Tile)>::query().filter(!component::<RigidBody2D>());
+
+    let rigidbodies: Vec<_> = query
+        .iter(world)
+        .filter_map(|(e, tile)| match tile {
+            Tile::Wall | Tile::Door(_, _, _) => Some((
+                e.clone(),
+                RigidBody2D::new(
+                    Shape::AABB(tileset.tile_width as f32 / 2.0, tileset.tile_height as f32 / 2.0),
+                    true,
+                ),
+            )),
+            _ => None,
+        })
+        .collect();
+    for (e, rb) in rigidbodies {
+        if let Some(mut entry) = world.entry(e) {
+            entry.add_component(rb);
+        }
+    }
+}
+
 struct Tileset {
     pyxel_file: &'static str,
-    tiles: HashMap<usize, [Constrain<Tile>; 9]>,
+    tile_constrains: HashMap<usize, [Constrain<Tile>; 9]>,
     animations: Vec<AnimatedTile>,
     tile_width: usize,
     tile_height: usize,
@@ -205,7 +225,7 @@ fn base_tileset() -> Tileset {
         pyxel_file: "base.pyxel",
         tile_width: 16,
         tile_height: 16,
-        tiles: map!{
+        tile_constrains: map!{
             3 => [
                 x,              x,              x,
                 x,              MustBe(Wall),   MustBe(Wall),
@@ -401,12 +421,15 @@ impl GameScene {
 
         let cmds: Vec<RoomCommand> = vec![];
         resources.insert(cmds);
+        resources.insert(base_tileset());
         resources.insert(CurrentRoom(0));
         resources.insert(vec![RoomEntry {
             room: bp,
             position: (0, 0),
             age: 0,
         }]);
+
+        create_tile_colliders(world, &base_tileset());
 
         Schedule::builder()
             .add_system(update_game_scene_system())
@@ -495,10 +518,19 @@ fn move_vehicles(
     vehicle: &mut Vehicle,
     rigidbody: Option<&RigidBody2D>,
     #[resource] LastFrameDuration(duration): &LastFrameDuration,
+    #[resource] PhysicsResources { bodies, .. }: &mut PhysicsResources,
 ) {
     if vehicle.force.length_squared() > 0.01 {
         let new_p = position.0 + vehicle.force * duration.as_secs_f32();
         if let Some(rigidbody) = rigidbody {
+            if let Some((rbh, _ch)) = rigidbody.handles {
+                let rb = bodies
+                    .get_mut(rbh)
+                    .expect("RigidBody not found for handle moving vehicles");
+                let f =
+                    rapier2d::na::Vector2::new(vehicle.force.x * 100.0, vehicle.force.y * 100.0);
+                rb.apply_force(f, true);
+            }
         } else {
             position.0 = new_p;
         }

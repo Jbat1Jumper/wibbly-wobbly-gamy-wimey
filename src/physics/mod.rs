@@ -1,10 +1,14 @@
 use crate::common::*;
 use crate::fw::Plugin;
-use legion::*;
 use glam::f32::Vec2;
+use legion::*;
 
-use rapier2d::dynamics::{IntegrationParameters, JointSet, RigidBodySet, RigidBodyBuilder, BodyStatus, RigidBodyHandle};
-use rapier2d::geometry::{BroadPhase, ColliderSet, NarrowPhase, ColliderBuilder, SharedShape, ColliderHandle};
+use rapier2d::dynamics::{
+    BodyStatus, IntegrationParameters, JointSet, RigidBodyBuilder, RigidBodyHandle, RigidBodySet,
+};
+use rapier2d::geometry::{
+    BroadPhase, ColliderBuilder, ColliderHandle, ColliderSet, NarrowPhase, SharedShape,
+};
 use rapier2d::na::Vector2;
 use rapier2d::pipeline::PhysicsPipeline;
 
@@ -16,9 +20,9 @@ pub struct PhysicsResources {
     integration_parameters: IntegrationParameters,
     broad_phase: BroadPhase,
     narrow_phase: NarrowPhase,
-    bodies: RigidBodySet,
-    colliders: ColliderSet,
-    joints: JointSet,
+    pub bodies: RigidBodySet,
+    pub colliders: ColliderSet,
+    pub joints: JointSet,
 }
 
 impl Default for PhysicsResources {
@@ -40,7 +44,7 @@ impl Default for PhysicsResources {
 }
 
 impl Plugin for PhysicsPlugin {
-    fn init(&mut self, world: &mut World, resources: &mut Resources) {
+    fn init(&mut self, _world: &mut World, resources: &mut Resources) {
         resources.insert(PhysicsResources::default());
     }
 
@@ -71,9 +75,7 @@ impl Plugin for PhysicsPlugin {
 }
 
 #[system]
-fn simulation_step(
-    #[resource] physics: &mut PhysicsResources,
-) {
+fn simulation_step(#[resource] physics: &mut PhysicsResources) {
     physics.pipeline.step(
         &physics.gravity,
         &physics.integration_parameters,
@@ -83,12 +85,25 @@ fn simulation_step(
         &mut physics.colliders,
         &mut physics.joints,
         &(),
-        &()
+        &(),
     );
 }
 
-#[system]
-fn sync_rigidbodies(){}
+#[system(for_each)]
+fn sync_rigidbodies(
+    rigidbody: &RigidBody2D,
+    position: &mut Position,
+    #[resource] physics: &mut PhysicsResources,
+) {
+    if let Some((rbh, _ch)) = rigidbody.handles {
+        let rb = physics
+            .bodies
+            .get_mut(rbh)
+            .expect("RigidBody not found for handle on back sync");
+        let t = rb.position().translation.vector;
+        position.0 = Vec2::new(t.x, t.y);
+    }
+}
 
 #[system(for_each)]
 fn create_rigidbodies(
@@ -97,13 +112,18 @@ fn create_rigidbodies(
     #[resource] physics: &mut PhysicsResources,
 ) {
     if rigidbody.handles.is_none() {
-        let rb = RigidBodyBuilder::new(BodyStatus::Dynamic)
-            .translation(p.x, p.y)
-            .lock_rotations()
-            .can_sleep(true)
-            .build();
+        let rb = RigidBodyBuilder::new(if rigidbody.is_static {
+            BodyStatus::Static
+        } else {
+            BodyStatus::Dynamic
+        })
+        .translation(p.x, p.y)
+        .lock_rotations()
+        .can_sleep(true)
+        .build();
         let rbh = physics.bodies.insert(rb);
         let c = ColliderBuilder::new(map_shape(&rigidbody.shape))
+            .friction(0.9)
             .build();
         let ch = physics.colliders.insert(c, rbh, &mut physics.bodies);
         rigidbody.handles = Some((rbh, ch));
@@ -117,17 +137,18 @@ fn map_shape(s: &Shape) -> SharedShape {
     }
 }
 
-
 pub struct RigidBody2D {
-    handles: Option<(RigidBodyHandle, ColliderHandle)>,
-    shape: Shape,
+    pub handles: Option<(RigidBodyHandle, ColliderHandle)>,
+    pub shape: Shape,
+    pub is_static: bool,
 }
 
 impl RigidBody2D {
-    pub fn new(shape: Shape) -> Self {
+    pub fn new(shape: Shape, is_static: bool) -> Self {
         RigidBody2D {
             handles: None,
             shape,
+            is_static,
         }
     }
 }
@@ -140,4 +161,3 @@ pub enum Shape {
 pub struct DrawRigidbodyFlag;
 
 fn debug_render_rigidbodies(world: &World, resources: &Resources) {}
-
