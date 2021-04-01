@@ -12,6 +12,7 @@ mod common;
 mod fw;
 mod ggez_backend;
 mod unreachable;
+mod physics;
 
 #[macro_use]
 use common::*;

@@ -16,6 +16,7 @@ use pyxel::Pyxel;
 
 #[macro_use]
 use crate::common::*;
+use crate::physics::*;
 
 #[derive(Clone, Copy, Debug)]
 enum ChabonKind {
@@ -40,6 +41,7 @@ fn prototype_player(w: &mut World) -> Entity {
             current_animation_time: 0.0,
         },
         SpriteTransform::default(),
+        RigidBody2D::new(Shape::AABB(10.0, 10.0)),
     ))
 }
 
@@ -140,7 +142,7 @@ fn get_tile_components(
     pos: (i32, i32),
     tile_map: &TileMap,
     tileset: &Tileset,
-) -> Option<(TileRef, SpriteTransform, Position)> {
+) -> Option<(TileRef, SpriteTransform, Position, RigidBody2D)> {
     let nh = tile_map.neighborhood(pos);
 
     for flipped in &[false, true] {
@@ -167,6 +169,10 @@ fn get_tile_components(
                         Position(Vec2::new(
                             pos.0 as f32 * tileset.tile_width as f32,
                             pos.1 as f32 * tileset.tile_height as f32,
+                        )),
+                        RigidBody2D::new(Shape::AABB(
+                            tileset.tile_width as f32,
+                            tileset.tile_height as f32,
                         )),
                     ));
                 }
@@ -487,10 +493,15 @@ fn update_room(#[resource] command_buffer: &Vec<RoomCommand>) {
 fn move_vehicles(
     position: &mut Position,
     vehicle: &mut Vehicle,
+    rigidbody: Option<&RigidBody2D>,
     #[resource] LastFrameDuration(duration): &LastFrameDuration,
 ) {
     if vehicle.force.length_squared() > 0.01 {
-        position.0 += vehicle.force * duration.as_secs_f32();
+        let new_p = position.0 + vehicle.force * duration.as_secs_f32();
+        if let Some(rigidbody) = rigidbody {
+        } else {
+            position.0 = new_p;
+        }
         vehicle.direction = vehicle.force.normalize();
     }
     vehicle.force = Vec2::new(0.0, 0.0);

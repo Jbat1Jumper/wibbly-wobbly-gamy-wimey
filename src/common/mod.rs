@@ -67,11 +67,6 @@ impl Default for Vehicle {
     }
 }
 
-pub enum Shape {
-    Circle(f32),
-    Square(f32),
-}
-
 #[derive(Clone, Copy, Debug)]
 pub enum Button {
     Start,
