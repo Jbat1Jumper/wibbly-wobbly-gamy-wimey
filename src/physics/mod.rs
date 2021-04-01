@@ -8,8 +8,7 @@ use rapier2d::geometry::{BroadPhase, ColliderSet, NarrowPhase, ColliderBuilder, 
 use rapier2d::na::Vector2;
 use rapier2d::pipeline::PhysicsPipeline;
 
-pub struct PhysicsPlugin {
-}
+pub struct PhysicsPlugin;
 
 pub struct PhysicsResources {
     pipeline: PhysicsPipeline,

@@ -4,7 +4,7 @@ use legion::{World, Resources, Schedule};
 
 mod scenes;
 
-pub struct UnreachableGame {}
+pub struct UnreachableGame;
 
 impl Plugin for UnreachableGame {
     fn init(&mut self, world: &mut World, resources: &mut Resources) {

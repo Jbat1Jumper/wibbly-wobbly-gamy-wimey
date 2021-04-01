@@ -19,6 +19,7 @@ use common::*;
 
 use ggez_backend::{GgezBackend, SpriteResources};
 use unreachable::UnreachableGame;
+use physics::PhysicsPlugin;
 
 pub fn main() {
     // We add the CARGO_MANIFEST_DIR/resources to the resource paths
@@ -35,6 +36,7 @@ pub fn main() {
 
     fw::Game::build()
         .using(GgezBackend::new(cb.build().unwrap(), SpriteResources::default()).unwrap())
-        .using(UnreachableGame {})
+        .using(UnreachableGame)
+        .using(PhysicsPlugin)
         .run(SceneRef("intro"));
 }
