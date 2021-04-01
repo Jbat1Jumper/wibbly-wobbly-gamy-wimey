@@ -41,7 +41,7 @@ fn prototype_player(w: &mut World) -> Entity {
             current_animation_time: 0.0,
         },
         SpriteTransform::default(),
-        RigidBody2D::new(Shape::Circle(4.0), false),
+        RigidBody2D::new(Shape::Circle(3.0), false),
     ))
 }
 

@@ -80,49 +80,53 @@ impl Plugin for GgezBackend {
     }
 
     fn draw(&mut self, world: &World, resources: &Resources) {
-        graphics::clear(&mut self.ggez_ctx, [0.1, 0.2, 0.3, 1.0].into());
-
-        let mut query = <(&Position, &Text)>::query();
-        for (position, text) in query.iter(world) {
-            let Position(pos) = position;
-            let rtext = self
-                .text_resources
-                .render_text(&mut self.ggez_ctx, text)
-                .expect("Error drawing text");
-
-            graphics::draw(&mut self.ggez_ctx, rtext, (pos.clone(),));
-        }
-
-        // TODO: The ordering and layers in this part are hardcoded
-        let mut tiles_count = 0;
-        let mut sprites_count = 0;
-        {
-            let pyxel_files = resources.get_mut().expect("No pyxel files");
-
-            let mut query = <(&TileRef, &SpriteTransform, &Position)>::query();
-            for (tile, transform, pos) in query.iter(world) {
-                self.draw_tile(tile, transform, &*pyxel_files, pos)
-                    .expect("Error drawing tile");
-                tiles_count += 1;
-            }
-
-            let mut query = <(&Sprite, &SpriteTransform, &Position)>::query();
-
-            for (sprite, transform, pos) in query.iter(world) {
-                self.draw_sprite(sprite, &"shadows".into(), transform, &*pyxel_files, pos);
-                sprites_count += 1;
-            }
-            for (sprite, transform, pos) in query.iter(world) {
-                self.draw_sprite(sprite, &"main".into(), transform, &*pyxel_files, pos);
-                sprites_count += 1;
-            }
-        }
-
         let CurrentFrame(frame) = *resources.get().expect("Error reading current frame");
-        if (frame % 100) == 0 {
-            let CurrentFPS(fps) = *resources.get().expect("Error reading fps");
-            println!("FPS: {}", fps);
-            println!("Draw {} tiles and {} sprites.", tiles_count, sprites_count);
+
+        if (frame % 3) == 0 {
+
+            graphics::clear(&mut self.ggez_ctx, [0.1, 0.2, 0.3, 1.0].into());
+            let mut query = <(&Position, &Text)>::query();
+            for (position, text) in query.iter(world) {
+                let Position(pos) = position;
+                let rtext = self
+                    .text_resources
+                    .render_text(&mut self.ggez_ctx, text)
+                    .expect("Error drawing text");
+
+                graphics::draw(&mut self.ggez_ctx, rtext, (pos.clone(),));
+            }
+
+            // TODO: The ordering and layers in this part are hardcoded
+            let mut tiles_count = 0;
+            let mut sprites_count = 0;
+            {
+                let pyxel_files = resources.get_mut().expect("No pyxel files");
+
+                let mut query = <(&TileRef, &SpriteTransform, &Position)>::query();
+                for (tile, transform, pos) in query.iter(world) {
+                    self.draw_tile(tile, transform, &*pyxel_files, pos)
+                        .expect("Error drawing tile");
+                    tiles_count += 1;
+                }
+
+                let mut query = <(&Sprite, &SpriteTransform, &Position)>::query();
+
+                for (sprite, transform, pos) in query.iter(world) {
+                    self.draw_sprite(sprite, &"shadows".into(), transform, &*pyxel_files, pos);
+                    sprites_count += 1;
+                }
+                for (sprite, transform, pos) in query.iter(world) {
+                    self.draw_sprite(sprite, &"main".into(), transform, &*pyxel_files, pos);
+                    sprites_count += 1;
+                }
+            }
+
+            if (frame % 100) == 0 {
+                let CurrentFPS(fps) = *resources.get().expect("Error reading fps");
+                println!("FPS: {}", fps);
+                println!("Draw {} tiles and {} sprites.", tiles_count, sprites_count);
+            }
+
         }
 
         graphics::present(&mut self.ggez_ctx);
@@ -194,7 +198,7 @@ impl GgezBackend {
             &mut self.ggez_ctx,
             img,
             ggez::graphics::DrawParam::default()
-                .dest(*pos * 4.0)
+                .dest([pos.x.round() * 4.0, pos.y.round() * 4.0])
                 .offset([0.5, 0.5])
                 .rotation(rotation.radians())
                 .scale([4.0, 4.0]),
