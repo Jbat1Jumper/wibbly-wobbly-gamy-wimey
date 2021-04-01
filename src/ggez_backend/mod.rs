@@ -60,10 +60,10 @@ impl Plugin for GgezBackend {
                         }
                     },
                     // `CloseRequested` and `KeyboardInput` events won't appear here.
-                    x => (), //println!("Other window event fired: {:?}", x),
+                    _ => (), //println!("Other window event fired: {:?}", x),
                 },
 
-                x => (), //println!("Device event fired: {:?}", x),
+                _ => (), //println!("Device event fired: {:?}", x),
             }
         });
 
