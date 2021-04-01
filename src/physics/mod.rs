@@ -112,18 +112,20 @@ fn create_rigidbodies(
     #[resource] physics: &mut PhysicsResources,
 ) {
     if rigidbody.handles.is_none() {
-        let rb = RigidBodyBuilder::new(if rigidbody.is_static {
+        let body_kind = if rigidbody.is_static {
             BodyStatus::Static
         } else {
             BodyStatus::Dynamic
-        })
-        .translation(p.x, p.y)
-        .lock_rotations()
-        .can_sleep(true)
-        .build();
+        };
+        let rb = RigidBodyBuilder::new(body_kind)
+            .translation(p.x, p.y)
+            .lock_rotations()
+            .linear_damping(8.0)
+            .can_sleep(true)
+            .build();
         let rbh = physics.bodies.insert(rb);
         let c = ColliderBuilder::new(map_shape(&rigidbody.shape))
-            .friction(0.9)
+            .friction(0.8)
             .build();
         let ch = physics.colliders.insert(c, rbh, &mut physics.bodies);
         rigidbody.handles = Some((rbh, ch));
