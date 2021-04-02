@@ -24,6 +24,10 @@ pub struct GgezBackend {
 }
 
 impl Plugin for GgezBackend {
+    fn name(&self) -> String {
+        "GgezBackend".into()
+    }
+
     fn init(&mut self, world: &mut World, resources: &mut Resources) {}
     fn update(&mut self, world: &mut World, resources: &mut Resources) {
         let mut button_events: Vec<(Button, ButtonState)> = vec![];
@@ -54,11 +58,13 @@ impl Plugin for GgezBackend {
                             ()
                         } else {
                             match Self::key_binding(keycode) {
-                                Some(button) => button_events.push((button, Self::state_binding(state))),
+                                Some(button) => {
+                                    button_events.push((button, Self::state_binding(state)))
+                                }
                                 None => (),
                             }
                         }
-                    },
+                    }
                     // `CloseRequested` and `KeyboardInput` events won't appear here.
                     _ => (), //println!("Other window event fired: {:?}", x),
                 },
@@ -83,7 +89,6 @@ impl Plugin for GgezBackend {
         let CurrentFrame(frame) = *resources.get().expect("Error reading current frame");
 
         if (frame % 3) == 0 {
-
             graphics::clear(&mut self.ggez_ctx, [0.1, 0.2, 0.3, 1.0].into());
             let mut query = <(&Position, &Text)>::query();
             for (position, text) in query.iter(world) {
@@ -126,7 +131,6 @@ impl Plugin for GgezBackend {
                 println!("FPS: {}", fps);
                 println!("Draw {} tiles and {} sprites.", tiles_count, sprites_count);
             }
-
         }
 
         graphics::present(&mut self.ggez_ctx);

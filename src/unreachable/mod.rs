@@ -1,12 +1,16 @@
-use crate::fw::Plugin;
 use crate::common::*;
-use legion::{World, Resources, Schedule};
+use crate::fw::Plugin;
+use legion::{Resources, Schedule, World};
 
 mod scenes;
 
 pub struct UnreachableGame;
 
 impl Plugin for UnreachableGame {
+    fn name(&self) -> String {
+        "UnreachableGame".into()
+    }
+
     fn init(&mut self, world: &mut World, resources: &mut Resources) {
         resources.insert(PyxelFiles(map! {
             "base.pyxel" => {
@@ -19,7 +23,12 @@ impl Plugin for UnreachableGame {
         }));
     }
 
-    fn load_scene(&mut self, world: &mut World, resources: &mut Resources, scene: SceneRef) -> Option<Schedule> {
+    fn load_scene(
+        &mut self,
+        world: &mut World,
+        resources: &mut Resources,
+        scene: SceneRef,
+    ) -> Option<Schedule> {
         scenes::load_scene(world, resources, scene)
     }
 }

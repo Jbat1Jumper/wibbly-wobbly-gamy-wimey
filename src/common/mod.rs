@@ -1,4 +1,4 @@
-pub use std::time::Duration;
+pub use std::time::{Duration, Instant};
 
 use glam::f32::Vec2;
 

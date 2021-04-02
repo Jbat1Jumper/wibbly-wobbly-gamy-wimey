@@ -44,6 +44,10 @@ impl Default for PhysicsResources {
 }
 
 impl Plugin for PhysicsPlugin {
+    fn name(&self) -> String {
+        "PhysicsPlugin".into()
+    }
+
     fn init(&mut self, _world: &mut World, resources: &mut Resources) {
         resources.insert(PhysicsResources::default());
     }
