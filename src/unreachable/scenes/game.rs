@@ -18,6 +18,8 @@ use pyxel::Pyxel;
 use crate::common::*;
 use crate::physics::*;
 
+mod level_gen;
+
 #[derive(Clone, Copy, Debug)]
 enum ChabonKind {
     Player,
@@ -188,7 +190,10 @@ fn create_tile_colliders(world: &mut World, tileset: &Tileset) {
             Tile::Wall | Tile::Door(_, _, _) => Some((
                 e.clone(),
                 RigidBody2D::new(
-                    Shape::AABB(tileset.tile_width as f32 / 2.0, tileset.tile_height as f32 / 2.0),
+                    Shape::AABB(
+                        tileset.tile_width as f32 / 2.0,
+                        tileset.tile_height as f32 / 2.0,
+                    ),
                     true,
                 ),
             )),
