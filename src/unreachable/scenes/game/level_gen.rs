@@ -57,13 +57,13 @@ enum Problem {
 type CreatedNewRoom = bool;
 
 impl State {
-    fn new(mem_size: usize) -> Self {
+    fn new(mem_size: usize, s: Room) -> Self {
         State {
             mem_size,
-            current_room: "S",
-            visited: "S".into(),
+            current_room: s,
+            visited: s.into(),
             memoized: map! {
-                "S" => RoomMemory {
+                s => RoomMemory {
                     age: 0,
                     connections: HashMap::new(),
                 }
@@ -90,9 +90,10 @@ impl State {
             Ok(false)
         } else {
             // if not, then search for a rule to create a new room
+            let visited = format!("_________{}", self.visited);
             let applicable_rules: Vec<_> = get_rules()
                 .iter()
-                .filter(|Rule(pattern, door, _)| *door == dn && pattern.is_match(&self.visited))
+                .filter(|Rule(pattern, door, _)| *door == dn && pattern.is_match(&visited))
                 .cloned()
                 .collect();
 
@@ -126,12 +127,18 @@ impl State {
             // check if another memory of the current_room is reachable
             // (currently only if exists memory because now all memories
             // are reachable)
-            if self.memoized.contains_key(next_room) && *next_room != oldest_room {
-                return Err(Problem::MultipleReachableMemoriesForRoom(
-                    self.visited.clone(),
-                    self.mem_size,
-                ));
+            if self.memoized.contains_key(next_room) {
+                let is_going_to_be_removed =
+                    *next_room == oldest_room && self.memoized.len() > self.mem_size;
+
+                if !is_going_to_be_removed {
+                    return Err(Problem::MultipleReachableMemoriesForRoom(
+                        self.visited.clone(),
+                        self.mem_size,
+                    ));
+                }
             }
+
             // add new memory (with age 0 and connections: 0 => self.current_room)
             self.memoized.insert(
                 *next_room,
@@ -143,7 +150,7 @@ impl State {
                 },
             );
 
-            if self.memoized.len() > (self.mem_size + 1) {
+            if self.memoized.len() > (self.mem_size + 1) && oldest_room != *next_room {
                 self.memoized.remove(&oldest_room);
                 for (r, m) in self.memoized.iter_mut() {
                     m.connections.retain(|dn, nr| *nr != oldest_room);
@@ -220,14 +227,14 @@ pub fn test_regex() {
 
 #[test]
 pub fn can_do_single_step() {
-    let mut state = State::new(0);
+    let mut state = State::new(0, "S");
     state.step(1).unwrap();
     assert_eq!(state.current_room, "a", "Current room differs");
 }
 
 #[test]
 pub fn walk_till_X() {
-    let mut state = State::new(0);
+    let mut state = State::new(0, "S");
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -237,7 +244,7 @@ pub fn walk_till_X() {
 
 #[test]
 pub fn walk_with_no_return() {
-    let mut state = State::new(0);
+    let mut state = State::new(0, "S");
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -250,7 +257,7 @@ pub fn walk_with_no_return() {
 
 #[test]
 pub fn walk_with_return() {
-    let mut state = State::new(1);
+    let mut state = State::new(1, "S");
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -260,7 +267,7 @@ pub fn walk_with_return() {
 
 #[test]
 pub fn walk_till_F() {
-    let mut state = State::new(3);
+    let mut state = State::new(3, "S");
     state.step(1).unwrap();
     state.step(2).unwrap();
     state.step(0).unwrap();
@@ -268,4 +275,43 @@ pub fn walk_till_F() {
     assert_eq!(state.current_room, "b", "Current room differs");
     state.step(1).unwrap();
     assert_eq!(state.current_room, "F", "Current room differs");
+}
+
+#[test]
+pub fn cant_have_two_a() {
+    let mut state = State::new(3, "S");
+    state.step(1).unwrap();
+    state.step(1).unwrap();
+    state.step(1).unwrap();
+    let r = state.step(1);
+    if let Err(Problem::MultipleReachableMemoriesForRoom(_, _)) = r {
+    } else {
+        panic!("Unexpected result: {:?}, at state: {:?}", r, state);
+    }
+}
+
+#[test]
+pub fn if_older_room_is_removed_is_ok_that_is_the_same() {
+    let mut state = State::new(2, "S");
+    state.step(1).unwrap();
+    state.step(1).unwrap();
+    state.step(1).unwrap();
+    state.step(1).unwrap();
+    assert_eq!(
+        state.current_room, "a",
+        "Current room should be 'a', at state: {:?}",
+        state
+    );
+}
+
+#[test]
+pub fn should_fail_if_older_room_is_the_same_as_the_new_but_isnt_removed() {
+    let mut state = State::new(3, "a");
+    state.step(1).unwrap();
+    state.step(1).unwrap();
+    let r = state.step(1);
+    if let Err(Problem::MultipleReachableMemoriesForRoom(_, _)) = r {
+    } else {
+        panic!("Unexpected result: {:?}, at state: {:?}", r, state);
+    }
 }
