@@ -1,16 +1,36 @@
-use std::collections::{HashMap, HashSet};
-use Room::*;
+use regex::Regex;
+use std::collections::HashMap;
 
 #[rustfmt::skip]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-    enum Room { S, A, B, C, F, X, }
+type Room = &'static str;
 
 type DoorNumber = usize;
 
 type Age = usize;
 
 #[derive(Clone, Debug)]
-struct Rule(&'static [Room], DoorNumber, Room);
+struct Rule(Regex, DoorNumber, Room);
+
+struct IncompleteRule1(Regex);
+struct IncompleteRule2(Regex, DoorNumber);
+
+impl Rule {
+    fn at(pattern: &'static str) -> IncompleteRule1 {
+        IncompleteRule1(Regex::new(&format!("({})$", pattern)).unwrap())
+    }
+}
+
+impl IncompleteRule1 {
+    fn through(self, dn: DoorNumber) -> IncompleteRule2 {
+        IncompleteRule2(self.0, dn)
+    }
+}
+
+impl IncompleteRule2 {
+    fn gets_to(self, room: Room) -> Rule {
+        Rule(self.0, self.1, room)
+    }
+}
 
 #[derive(Clone, Debug)]
 struct RoomMemory {
@@ -22,16 +42,16 @@ struct RoomMemory {
 struct State {
     current_room: Room,
     memoized: HashMap<Room, RoomMemory>,
-    visited: Vec<Room>,
+    visited: String,
     mem_size: usize,
 }
 
 #[derive(Clone, Debug)]
 enum Problem {
     NoDoorInRoom(Room, DoorNumber),
-    NoRuleMatchesFor(Vec<Room>, DoorNumber),
-    MultipleMatchesFor(Vec<Room>, DoorNumber, Vec<Rule>),
-    MultipleReachableMemoriesForRoom(Vec<Room>, usize),
+    NoRuleMatchesFor(String, DoorNumber),
+    MultipleMatchesFor(String, DoorNumber, Vec<Rule>),
+    MultipleReachableMemoriesForRoom(String, usize),
 }
 
 type CreatedNewRoom = bool;
@@ -40,10 +60,10 @@ impl State {
     fn new(mem_size: usize) -> Self {
         State {
             mem_size,
-            current_room: S,
-            visited: vec![S],
+            current_room: "S",
+            visited: "S".into(),
             memoized: map! {
-                S => RoomMemory {
+                "S" => RoomMemory {
                     age: 0,
                     connections: HashMap::new(),
                 }
@@ -66,13 +86,13 @@ impl State {
                 m.age = if *r == next_room { 0 } else { m.age + 1 };
             }
             self.current_room = next_room;
-            self.visited.push(next_room);
+            self.visited.push_str(next_room);
             Ok(false)
         } else {
             // if not, then search for a rule to create a new room
             let applicable_rules: Vec<_> = get_rules()
                 .iter()
-                .filter(|Rule(pattern, door, _)| *door == dn && self.visited.ends_with(pattern))
+                .filter(|Rule(pattern, door, _)| *door == dn && pattern.is_match(&self.visited))
                 .cloned()
                 .collect();
 
@@ -131,45 +151,40 @@ impl State {
             }
 
             self.current_room = *next_room;
-            self.visited.push(*next_room);
+            self.visited.push_str(next_room);
             Ok(true)
         }
     }
 }
 
 fn can_return(r: Room) -> bool {
-    r != S
+    r != "S"
 }
 
 fn is_final(r: Room) -> bool {
-    r == F
+    r == "F"
 }
 
 fn available_doors(r: Room) -> &'static [DoorNumber] {
     match r {
-        F => &[0],
-        S => &[1],
-        B | C | X => &[0, 1],
-        A => &[0, 1, 2],
+        "F" => &[0],
+        "S" => &[1],
+        "b" | "c" | "x" => &[0, 1],
+        "a" => &[0, 1, 2],
+        _ => panic!("Unknown room"),
     }
 }
 
-fn get_rules() -> &'static [Rule] {
-    &[
-        Rule(&[S], 1, A),
-        Rule(&[A], 1, B),
-        Rule(&[A], 2, C),
-        Rule(&[S, A, B], 1, X),
-        Rule(&[B, A, B], 1, X),
-        Rule(&[B, X, B], 1, X),
-        Rule(&[X, A, B], 1, X),
-        Rule(&[C, A, B], 1, F),
-        Rule(&[S, A, C], 1, X),
-        Rule(&[C, A, C], 1, X),
-        Rule(&[C, X, C], 1, X),
-        Rule(&[X, A, C], 1, X),
-        Rule(&[B, A, C], 1, F),
-        Rule(&[X], 1, A),
+fn get_rules() -> [Rule; 8] {
+    [
+        Rule::at("S").through(1).gets_to("a"),
+        Rule::at("a").through(1).gets_to("b"),
+        Rule::at("a").through(2).gets_to("c"),
+        Rule::at("[^c]ab|[^a]b").through(1).gets_to("x"),
+        Rule::at("cab").through(1).gets_to("F"),
+        Rule::at("[^b]ac|[^a]c").through(1).gets_to("x"),
+        Rule::at("bac").through(1).gets_to("F"),
+        Rule::at("x").through(1).gets_to("a"),
     ]
 }
 
@@ -179,10 +194,35 @@ pub fn test_trivial() {
 }
 
 #[test]
+pub fn test_regex() {
+    let p = "([^b]ac|[^a]c)$";
+    assert!(
+        Regex::new(p).unwrap().is_match("xxxxc"),
+        "{} Should match xxxxc",
+        p
+    );
+    assert!(
+        Regex::new(p).unwrap().is_match("cac"),
+        "{} Should match cac",
+        p
+    );
+    assert!(
+        !Regex::new(p).unwrap().is_match("Saca"),
+        "{} Should not match Saca",
+        p
+    );
+    assert!(
+        !Regex::new(p).unwrap().is_match("bac"),
+        "{} Should not match bac",
+        p
+    );
+}
+
+#[test]
 pub fn can_do_single_step() {
     let mut state = State::new(0);
     state.step(1).unwrap();
-    assert_eq!(state.current_room, A, "Current room differs");
+    assert_eq!(state.current_room, "a", "Current room differs");
 }
 
 #[test]
@@ -190,9 +230,9 @@ pub fn walk_till_X() {
     let mut state = State::new(0);
     state.step(1).unwrap();
     state.step(2).unwrap();
-    assert_eq!(state.current_room, C, "Current room differs");
+    assert_eq!(state.current_room, "c", "Current room differs");
     state.step(1).unwrap();
-    assert_eq!(state.current_room, X, "Current room differs");
+    assert_eq!(state.current_room, "x", "Current room differs");
 }
 
 #[test]
@@ -200,7 +240,7 @@ pub fn walk_with_no_return() {
     let mut state = State::new(0);
     state.step(1).unwrap();
     state.step(2).unwrap();
-    assert_eq!(state.current_room, C, "Current room differs");
+    assert_eq!(state.current_room, "c", "Current room differs");
     let r = state.step(0);
     if let Err(Problem::NoRuleMatchesFor(_, _)) = r {
     } else {
@@ -213,9 +253,9 @@ pub fn walk_with_return() {
     let mut state = State::new(1);
     state.step(1).unwrap();
     state.step(2).unwrap();
-    assert_eq!(state.current_room, C, "Current room differs");
+    assert_eq!(state.current_room, "c", "Current room differs");
     state.step(0).unwrap();
-    assert_eq!(state.current_room, A, "Current room differs");
+    assert_eq!(state.current_room, "a", "Current room differs");
 }
 
 #[test]
@@ -225,7 +265,7 @@ pub fn walk_till_F() {
     state.step(2).unwrap();
     state.step(0).unwrap();
     state.step(1).unwrap();
-    assert_eq!(state.current_room, B, "Current room differs");
+    assert_eq!(state.current_room, "b", "Current room differs");
     state.step(1).unwrap();
-    assert_eq!(state.current_room, F, "Current room differs");
+    assert_eq!(state.current_room, "F", "Current room differs");
 }

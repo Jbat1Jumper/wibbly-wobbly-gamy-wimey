@@ -14,6 +14,7 @@ legion = "0.3"
 image = "0.22"
 rapier2d = { version = "0.6", features=["simd-stable"] }
 crossbeam-channel = "0.5"
+regex = "1"
 
 [patch.crates-io]
 pyxel = { git = 'https://github.com/Jbat1Jumper/pyxel', features=["images"] }
