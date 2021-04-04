@@ -185,6 +185,48 @@ pub trait Flippable {
     fn flip_horizontally(self) -> Self;
 }
 
+impl<T> Rotable for [T; 9]
+where
+    T: Copy,
+{
+    #[rustfmt::skip]
+    fn rotate(self, rotation: &Rotation) -> [T; 9] {
+        match rotation {
+            Deg0 => self,
+            Deg90 => [
+                self[6], self[3], self[0],
+                self[7], self[4], self[1],
+                self[8], self[5], self[2],
+            ],
+            Deg180 => [
+                self[8], self[7], self[6],
+                self[5], self[4], self[3],
+                self[2], self[1], self[0],
+            ],
+            Deg270 => [
+                self[2], self[5], self[8],
+                self[1], self[4], self[7],
+                self[0], self[3], self[6],
+            ],
+        }
+    }
+}
+
+impl<T> Flippable for [T; 9]
+where
+    T: Copy,
+{
+    #[rustfmt::skip]
+    fn flip_horizontally(self) -> [T; 9] {
+        [
+            self[2], self[1], self[0],
+            self[5], self[4], self[3],
+            self[8], self[7], self[6],
+        ]
+    }
+}
+
+
 pub trait GridWalkable {
     fn step(&self, direction: Direction) -> Self;
 }
