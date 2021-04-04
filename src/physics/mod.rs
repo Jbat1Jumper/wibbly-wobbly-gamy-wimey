@@ -1,16 +1,17 @@
 use crate::common::*;
 use crate::fw::Plugin;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use glam::f32::Vec2;
 use legion::*;
-
 use rapier2d::dynamics::{
     BodyStatus, IntegrationParameters, JointSet, RigidBodyBuilder, RigidBodyHandle, RigidBodySet,
 };
 use rapier2d::geometry::{
     BroadPhase, ColliderBuilder, ColliderHandle, ColliderSet, NarrowPhase, SharedShape,
 };
+use rapier2d::geometry::{ContactEvent as RapierContactEvent, IntersectionEvent as RapierIntersectionEvent};
 use rapier2d::na::Vector2;
-use rapier2d::pipeline::PhysicsPipeline;
+use rapier2d::pipeline::{PhysicsPipeline, ChannelEventCollector};
 
 pub struct PhysicsPlugin;
 
@@ -23,10 +24,15 @@ pub struct PhysicsResources {
     pub bodies: RigidBodySet,
     pub colliders: ColliderSet,
     pub joints: JointSet,
+    event_handler: ChannelEventCollector,
+    contact_receive: Receiver<RapierContactEvent>,
+    intersection_receive: Receiver<RapierIntersectionEvent>,
 }
 
 impl Default for PhysicsResources {
     fn default() -> PhysicsResources {
+        let (intersection_send, intersection_receive) = unbounded();
+        let (contact_send, contact_receive) = unbounded();
         PhysicsResources {
             pipeline: PhysicsPipeline::new(),
             gravity: Vector2::new(0.0, 0.0),
@@ -36,12 +42,17 @@ impl Default for PhysicsResources {
             bodies: RigidBodySet::new(),
             colliders: ColliderSet::new(),
             joints: JointSet::new(),
-            // We ignore physics hooks and contact events for now.
+            // We ignore physics hooks for now.
             // let physics_hooks = ();
-            // let event_handler = ();
+            event_handler: ChannelEventCollector::new(intersection_send, contact_send),
+            contact_receive,
+            intersection_receive,
         }
     }
 }
+
+struct ContactEvent;
+struct IntersectionEvent;
 
 impl Plugin for PhysicsPlugin {
     fn name(&self) -> String {
@@ -49,6 +60,9 @@ impl Plugin for PhysicsPlugin {
     }
 
     fn init(&mut self, _world: &mut World, resources: &mut Resources) {
+        let (sender, receiver) = unbounded::<ContactEvent>();
+        resources.insert(sender);
+        resources.insert(receiver);
         resources.insert(PhysicsResources::default());
     }
 
@@ -57,6 +71,7 @@ impl Plugin for PhysicsPlugin {
             .add_system(create_rigidbodies_system())
             .add_system(simulation_step_system())
             .add_system(sync_rigidbodies_system())
+            .add_system(pipe_events_system())
             .build()
             .execute(world, resources);
     }
@@ -75,6 +90,21 @@ impl Plugin for PhysicsPlugin {
         // scene changes removes all handles to the rigidbodies
         resources.insert(PhysicsResources::default());
         None
+    }
+}
+
+#[system]
+fn pipe_events(
+    #[resource] physics: &mut PhysicsResources,
+    #[resource] receiver: &mut Receiver<ContactEvent>,
+    #[resource] sender: &mut Sender<ContactEvent>,
+) {
+    // Drain the master receiver so it does not get clogged
+    for _ in receiver.try_iter() { }
+
+    for ie in physics.intersection_receive.try_iter() { }
+    for ce in physics.contact_receive.try_iter() {
+        sender.send(ContactEvent);
     }
 }
 
