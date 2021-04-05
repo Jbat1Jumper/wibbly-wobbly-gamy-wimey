@@ -80,20 +80,20 @@ impl RoomGenerator for Lvl1RoomGenerator {
         match room {
             #[rustfmt::skip]
             "S" => RoomBlueprint {
-                size: (4, 5),
+                size: (5, 5),
                 tiles: vec![
-                    vec![Wall, Wall,   Wall,   Wall],
-                    vec![Wall, Ground, Ground, Wall],
-                    vec![Wall, Ground, Ground, Door(1)],
-                    vec![Wall, Ground, Ground, Wall],
-                    vec![Wall, Wall,   Wall,   Wall],
+                    vec![Wall, Wall,   Wall,   Wall,   Wall],
+                    vec![Wall, Ground, Ground, Ground, Wall],
+                    vec![Wall, Ground, Ground, Ground, Door(1)],
+                    vec![Wall, Ground, Ground, Ground, Wall],
+                    vec![Wall, Wall,   Wall,   Wall,   Wall],
                 ],
                 objects: vec![
-                    vec![None, None, None, None],
-                    vec![None, None, None, None],
-                    vec![None, None, None, None],
-                    vec![None, None, None, None],
-                    vec![None, None, None, None],
+                    vec![None, None, None, None, None],
+                    vec![None, None, None, None, None],
+                    vec![None, None, None, None, None],
+                    vec![None, None, None, None, None],
+                    vec![None, None, None, None, None],
                 ],
             },
             r => panic!("Dont know how to create room {} at Lvl1", r),
