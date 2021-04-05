@@ -1,7 +1,6 @@
 use regex::Regex;
 use std::collections::HashMap;
 
-#[rustfmt::skip]
 type Room = &'static str;
 
 type DoorNumber = usize;
@@ -18,6 +17,13 @@ impl Rule {
     fn at(pattern: &'static str) -> IncompleteRule1 {
         IncompleteRule1(Regex::new(&format!("({})$", pattern)).unwrap())
     }
+}
+
+trait Definition {
+    fn get_rules(&self) -> Vec<Rule>;
+    fn available_doors(&self, r: Room) -> Vec<DoorNumber>;
+    fn is_final(&self, r: Room) -> bool;
+    fn can_return(&self, r: Room) -> bool;
 }
 
 impl IncompleteRule1 {
@@ -39,9 +45,10 @@ struct RoomMemory {
 }
 
 #[derive(Clone, Debug)]
-struct State {
+struct State<Def> {
     current_room: Room,
     memoized: HashMap<Room, RoomMemory>,
+    definition: Def,
     visited: String,
     mem_size: usize,
 }
@@ -56,10 +63,14 @@ enum Problem {
 
 type CreatedNewRoom = bool;
 
-impl State {
-    fn new(mem_size: usize, s: Room) -> Self {
+impl<Def> State<Def>
+where
+    Def: Definition
+{
+    fn new(mem_size: usize, s: Room, definition: Def) -> Self {
         State {
             mem_size,
+            definition,
             current_room: s,
             visited: s.into(),
             memoized: map! {
@@ -72,7 +83,7 @@ impl State {
     }
 
     fn step(&mut self, dn: DoorNumber) -> Result<CreatedNewRoom, Problem> {
-        if !available_doors(self.current_room).contains(&dn) {
+        if !self.definition.available_doors(self.current_room).contains(&dn) {
             return Err(Problem::NoDoorInRoom(self.current_room, dn));
         }
 
@@ -91,7 +102,9 @@ impl State {
         } else {
             // if not, then search for a rule to create a new room
             let visited = format!("_________{}", self.visited);
-            let applicable_rules: Vec<_> = get_rules()
+            let applicable_rules: Vec<_> = self
+                .definition
+                .get_rules()
                 .iter()
                 .filter(|Rule(pattern, door, _)| *door == dn && pattern.is_match(&visited))
                 .cloned()
@@ -112,7 +125,7 @@ impl State {
             let Rule(_, _, next_room) = applicable_rules.first().unwrap();
 
             // increment all memory ages by one
-            for (r, m) in self.memoized.iter_mut() {
+            for (_, m) in self.memoized.iter_mut() {
                 m.age += 1;
             }
 
@@ -164,35 +177,41 @@ impl State {
     }
 }
 
-fn can_return(r: Room) -> bool {
-    r != "S"
-}
 
-fn is_final(r: Room) -> bool {
-    r == "F"
-}
+struct TestDefinition;
 
-fn available_doors(r: Room) -> &'static [DoorNumber] {
-    match r {
-        "F" => &[0],
-        "S" => &[1],
-        "b" | "c" | "x" => &[0, 1],
-        "a" => &[0, 1, 2],
-        _ => panic!("Unknown room"),
+impl Definition for TestDefinition {
+    fn can_return(&self, r: Room) -> bool {
+        r != "S"
     }
-}
 
-fn get_rules() -> [Rule; 8] {
-    [
-        Rule::at("S").through(1).gets_to("a"),
-        Rule::at("a").through(1).gets_to("b"),
-        Rule::at("a").through(2).gets_to("c"),
-        Rule::at("[^c]ab|[^a]b").through(1).gets_to("x"),
-        Rule::at("cab").through(1).gets_to("F"),
-        Rule::at("[^b]ac|[^a]c").through(1).gets_to("x"),
-        Rule::at("bac").through(1).gets_to("F"),
-        Rule::at("x").through(1).gets_to("a"),
-    ]
+    fn is_final(&self, r: Room) -> bool {
+        r == "F"
+    }
+
+    fn available_doors(&self, r: Room) -> Vec<DoorNumber> {
+        match r {
+            "F" => vec![0],
+            "S" => vec![1],
+            "b" | "c" | "x" => vec![0, 1],
+            "a" => vec![0, 1, 2],
+            _ => panic!("Unknown room"),
+        }
+    }
+
+    #[rustfmt::skip]
+    fn get_rules(&self) -> Vec<Rule> {
+        vec![
+            Rule::at("S")             .through(1)  .gets_to("a"),
+            Rule::at("a")             .through(1)  .gets_to("b"),
+            Rule::at("a")             .through(2)  .gets_to("c"),
+            Rule::at("[^c]ab|[^a]b")  .through(1)  .gets_to("x"),
+            Rule::at("cab")           .through(1)  .gets_to("F"),
+            Rule::at("[^b]ac|[^a]c")  .through(1)  .gets_to("x"),
+            Rule::at("bac")           .through(1)  .gets_to("F"),
+            Rule::at("x")             .through(1)  .gets_to("a"),
+        ]
+    }
 }
 
 #[test]
@@ -227,14 +246,14 @@ pub fn test_regex() {
 
 #[test]
 pub fn can_do_single_step() {
-    let mut state = State::new(0, "S");
+    let mut state = State::new(0, "S", TestDefinition);
     state.step(1).unwrap();
     assert_eq!(state.current_room, "a", "Current room differs");
 }
 
 #[test]
 pub fn walk_till_X() {
-    let mut state = State::new(0, "S");
+    let mut state = State::new(0, "S", TestDefinition);
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -244,7 +263,7 @@ pub fn walk_till_X() {
 
 #[test]
 pub fn walk_with_no_return() {
-    let mut state = State::new(0, "S");
+    let mut state = State::new(0, "S", TestDefinition);
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -257,7 +276,7 @@ pub fn walk_with_no_return() {
 
 #[test]
 pub fn walk_with_return() {
-    let mut state = State::new(1, "S");
+    let mut state = State::new(1, "S", TestDefinition);
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -267,7 +286,7 @@ pub fn walk_with_return() {
 
 #[test]
 pub fn walk_till_F() {
-    let mut state = State::new(3, "S");
+    let mut state = State::new(3, "S", TestDefinition);
     state.step(1).unwrap();
     state.step(2).unwrap();
     state.step(0).unwrap();
@@ -279,7 +298,7 @@ pub fn walk_till_F() {
 
 #[test]
 pub fn cant_have_two_a() {
-    let mut state = State::new(3, "S");
+    let mut state = State::new(3, "S", TestDefinition);
     state.step(1).unwrap();
     state.step(1).unwrap();
     state.step(1).unwrap();
@@ -292,7 +311,7 @@ pub fn cant_have_two_a() {
 
 #[test]
 pub fn if_older_room_is_removed_is_ok_that_is_the_same() {
-    let mut state = State::new(2, "S");
+    let mut state = State::new(2, "S", TestDefinition);
     state.step(1).unwrap();
     state.step(1).unwrap();
     state.step(1).unwrap();
@@ -306,7 +325,7 @@ pub fn if_older_room_is_removed_is_ok_that_is_the_same() {
 
 #[test]
 pub fn should_fail_if_older_room_is_the_same_as_the_new_but_isnt_removed() {
-    let mut state = State::new(3, "a");
+    let mut state = State::new(3, "a", TestDefinition);
     state.step(1).unwrap();
     state.step(1).unwrap();
     let r = state.step(1);
