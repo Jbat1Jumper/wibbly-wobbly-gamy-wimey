@@ -12,8 +12,8 @@ use crate::common::*;
 use crate::physics::*;
 
 mod level_gen;
-mod room_gen;
 mod room_blueprint_to_world;
+mod room_gen;
 
 #[derive(Clone, Copy, Debug)]
 enum ChabonKind {
@@ -26,8 +26,8 @@ struct JoystickControlledVehicle {
     stick: Vec2,
 }
 
-fn prototype_player(w: &mut World) -> Entity {
-    w.push((
+fn prototype_player(cmd: &mut CommandBuffer) -> Entity {
+    cmd.push((
         ChabonKind::Player,
         Position(Vec2::new(30.0, 30.0)),
         Vehicle::default(),
@@ -101,8 +101,11 @@ enum RoomCommand {
     PlayerDied,
 }
 
-pub struct GameScene {
-}
+////////////////////////////////////////////////////////////////////
+// GAME SCENE
+////////////////////////////////////////////////////////////////////
+
+pub struct GameScene {}
 
 pub struct CurrentRoom(pub &'static str);
 
@@ -112,24 +115,65 @@ impl GameScene {
         let font = Font::LiberationMono;
 
         initialize_base_tileset(resources);
-        use room_gen::model::RoomGenerator;
-        let mut bp = room_gen::Lvl1RoomGenerator::create("S");
-        room_blueprint_to_world::create(&bp, world, resources);
-
-        prototype_player(world);
-
         let cmds: Vec<RoomCommand> = vec![];
         resources.insert(cmds);
+        resources.insert(GameSceneState::Initial);
         resources.insert(CurrentRoom("S"));
 
         Schedule::builder()
             .add_system(update_game_scene_system())
+            .add_system(update_state_transitions_system())
             .add_system(update_chabon_sprites_system())
             .add_system(update_sprites_system_that_should_be_in_common_mod_system())
             .add_system(update_room_system())
             .add_system(move_vehicles_system())
             .add_system(update_joystick_controlled_vehicles_system())
             .build()
+    }
+}
+
+////////////////////////////////////////////////////////////////////
+// SYSTEMS
+////////////////////////////////////////////////////////////////////
+
+enum GameSceneState {
+    Initial,
+    EnteringRoom,
+    Play,
+    ExitingRoom,
+}
+
+impl Default for GameSceneState {
+    fn default() -> Self {
+        GameSceneState::Initial
+    }
+}
+
+#[system]
+fn update_state_transitions(
+    cmd: &mut CommandBuffer,
+    #[resource] state: &mut GameSceneState,
+    #[resource] tileset: &room_blueprint_to_world::Tileset,
+) {
+    use GameSceneState::*;
+    // let state = resources.get_or_default::<GameSceneState>();
+    match *state {
+        Initial => {
+            use room_gen::model::RoomGenerator;
+            let bp = room_gen::Lvl1RoomGenerator::create("S");
+            room_blueprint_to_world::create(&bp, cmd, tileset);
+            prototype_player(cmd);
+
+            *state = EnteringRoom;
+        }
+        EnteringRoom => {
+            *state = Play;
+        }
+        Play => {
+        }
+        ExitingRoom => {
+            *state = EnteringRoom;
+        }
     }
 }
 

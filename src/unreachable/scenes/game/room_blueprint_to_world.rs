@@ -2,6 +2,7 @@ use super::room_gen::model::{RoomBlueprint, Tile};
 use crate::common::*;
 use glam::f32::*;
 use legion::*;
+use legion::systems::CommandBuffer;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,7 +51,7 @@ fn get_tile_components(
     pos: (i32, i32),
     blueprint: &RoomBlueprint,
     tileset: &Tileset,
-) -> Option<(TileRef, SpriteTransform, Position, Tile)> {
+) -> Option<(Tile, TileRef, SpriteTransform, Position)> {
     let nh = blueprint.tile_neighborhood(pos);
 
     for flipped in &[false, true] {
@@ -69,6 +70,7 @@ fn get_tile_components(
 
                 if fits {
                     return Some((
+                        blueprint.tile_at(pos),
                         TileRef(*id, tileset.reference()),
                         SpriteTransform {
                             rotation: *rotation,
@@ -78,7 +80,6 @@ fn get_tile_components(
                             pos.0 as f32 * tileset.tile_width as f32,
                             pos.1 as f32 * tileset.tile_height as f32,
                         )),
-                        blueprint.tile_at(pos),
                     ));
                 }
             }
@@ -87,40 +88,30 @@ fn get_tile_components(
     None
 }
 
-fn create_tile_colliders(world: &mut World, tileset: &Tileset) {
-    use crate::physics::*;
-    let mut query = <(Entity, &Tile)>::query().filter(!component::<RigidBody2D>());
+pub fn create(blueprint: &RoomBlueprint, cmd: &mut CommandBuffer, tileset: &Tileset) {
+    let tile_components = blueprint
+        .positions()
+        .into_iter()
+        .filter_map(|pos| get_tile_components(pos, &blueprint, tileset));
 
-    let rigidbodies: Vec<_> = query
-        .iter(world)
-        .filter_map(|(e, tile)| match tile {
-            Tile::Wall | Tile::Door(_) => Some((
-                e.clone(),
-                RigidBody2D::new(
-                    Shape::AABB(
-                        tileset.tile_width as f32 / 2.0,
-                        tileset.tile_height as f32 / 2.0,
-                    ),
-                    true,
-                ),
-            )),
-            _ => None,
-        })
-        .collect();
-    for (e, rb) in rigidbodies {
-        if let Some(mut entry) = world.entry(e) {
-            entry.add_component(rb);
-        }
-    }
-}
+    let (need_collider, without_collider): (Vec<_>, Vec<_>) = tile_components.partition(|c| match c.0 {
+        Tile::Wall | Tile::Door(_) => true,
+        _ => false,
+    });
 
-pub fn create(blueprint: &RoomBlueprint, world: &mut World, resources: &mut Resources) {
-    let tileset = resources.get().expect("No tileset found");
-    world.extend(
-        blueprint
-            .positions()
-            .iter()
-            .filter_map(|pos| get_tile_components(*pos, &blueprint, &tileset)),
-    );
-    create_tile_colliders(world, &tileset);
+    let with_collider: Vec<_> = need_collider.into_iter().map(|(tile, tr, st, pos)| {
+        use crate::physics::*;
+        let rb = RigidBody2D::new(
+            Shape::AABB(
+                tileset.tile_width as f32 / 2.0,
+                tileset.tile_height as f32 / 2.0,
+            ),
+            true,
+        );
+
+        (tile, tr, st, pos, rb)
+    }).collect();
+
+    cmd.extend(without_collider);
+    cmd.extend(with_collider);
 }
