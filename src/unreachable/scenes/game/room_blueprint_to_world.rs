@@ -6,16 +6,35 @@ use legion::systems::CommandBuffer;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TileGraphic {
+pub enum TileConstrain {
+    X,
     Empty,
     Ground,
     Wall,
     Door,
+    Solid,
+}
+
+impl TileConstrain
+{
+    pub fn satisfies(&self, tile: Tile) -> bool {
+        match self {
+            TileConstrain::X => true,
+            TileConstrain::Empty => tile == Tile::Empty,
+            TileConstrain::Ground => tile == Tile::Ground,
+            TileConstrain::Wall => tile == Tile::Wall,
+            TileConstrain::Door => if let Tile::Door(_) = tile { true } else { false },
+            TileConstrain::Solid => match tile {
+                Tile::Door(_) | Tile::Wall => true,
+                _ => false,
+            },
+        }
+    }
 }
 
 pub struct Tileset {
     pub pyxel_file: &'static str,
-    pub tile_constrains: HashMap<usize, [Constrain<TileGraphic>; 9]>,
+    pub tile_constrains: HashMap<usize, [TileConstrain; 9]>,
     pub animations: Vec<AnimatedTile>,
     pub tile_width: usize,
     pub tile_height: usize,
@@ -34,17 +53,6 @@ pub struct AnimatedTile {
     /// Indicates that any tile that matches a frame should be animated
     pub intrinsic: bool,
     pub frames: Vec<usize>,
-}
-
-impl From<Tile> for TileGraphic {
-    fn from(t: Tile) -> Self {
-        match t {
-            Tile::Empty => TileGraphic::Empty,
-            Tile::Ground => TileGraphic::Ground,
-            Tile::Wall => TileGraphic::Wall,
-            Tile::Door(_) => TileGraphic::Door,
-        }
-    }
 }
 
 fn get_tile_components(
@@ -66,7 +74,7 @@ fn get_tile_components(
                 let fits = constrains
                     .iter()
                     .zip(nh.iter())
-                    .all(|(constrain, tile)| constrain.satisfies(&(*tile).into()));
+                    .all(|(constrain, tile)| constrain.satisfies(*tile));
 
                 if fits {
                     return Some((

@@ -44,38 +44,42 @@ fn prototype_player(cmd: &mut CommandBuffer) -> Entity {
 
 #[rustfmt::skip]
 fn initialize_base_tileset(resources: &mut Resources) {
-    use room_blueprint_to_world::{AnimatedTile, TileGraphic::*, Tileset};
+    use room_blueprint_to_world::{AnimatedTile, TileConstrain::*, Tileset};
 
-    let x = Unrestricted;
     let tileset = Tileset {
         pyxel_file: "base.pyxel",
         tile_width: 16,
         tile_height: 16,
         tile_constrains: map!{
             3 => [
-                x,              x,              x,
-                x,              MustBe(Wall),   MustBe(Wall),
-                x,              MustBe(Wall),   MustBe(Ground),
+                X,       X,       X,
+                X,       Wall,    Wall,
+                X,       Wall,    Ground,
             ],
             4 => [
-                x,              x,              x,
-                MustBe(Wall),   MustBe(Wall),   MustBe(Wall),
-                x,              MustBe(Ground), x,
+                X,       X,       X,
+                Wall,    Wall,    Wall,
+                X,       Ground,  X,
+            ],
+            4 => [
+                X,       X,       X,
+                Wall,    Wall,    Wall,
+                X,       Ground,  X,
             ],
             12 => [
-                x,              x,              x,
-                MustBe(Wall),   MustBe(Wall),   MustBe(Wall),
-                x,              MustBe(Ground), x,
+                X,       X,       X,
+                Wall,    Wall,    Wall,
+                X,       Ground,  X,
             ],
             7 => [
-                x,              x,              x,
-                x,              MustBe(Ground), x,
-                x,              x,              x,
+                X,       X,       X,
+                X,       Ground,  X,
+                X,       X,       X,
             ],
             2 => [
-                x,              x,              x,
-                x,              MustBe(Empty),  x,
-                x,              x,              x,
+                X,       X,       X,
+                X,       Empty,   X,
+                X,       X,       X,
             ]
         },
         animations: vec![
