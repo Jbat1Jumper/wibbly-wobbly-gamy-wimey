@@ -84,7 +84,7 @@ impl RoomGenerator for Lvl1RoomGenerator {
                 tiles: vec![
                     vec![Wall, Wall,   Wall,   Wall],
                     vec![Wall, Ground, Ground, Wall],
-                    vec![Wall, Ground, Ground, Wall/*,Door(1)*/],
+                    vec![Wall, Ground, Ground, Door(1)],
                     vec![Wall, Ground, Ground, Wall],
                     vec![Wall, Wall,   Wall,   Wall],
                 ],
