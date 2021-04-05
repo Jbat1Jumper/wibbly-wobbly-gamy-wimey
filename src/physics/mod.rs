@@ -9,9 +9,12 @@ use rapier2d::dynamics::{
 use rapier2d::geometry::{
     BroadPhase, ColliderBuilder, ColliderHandle, ColliderSet, NarrowPhase, SharedShape,
 };
-use rapier2d::geometry::{ContactEvent as RapierContactEvent, IntersectionEvent as RapierIntersectionEvent};
+use rapier2d::geometry::{
+    ContactEvent as RapierContactEvent, IntersectionEvent as RapierIntersectionEvent,
+};
 use rapier2d::na::Vector2;
-use rapier2d::pipeline::{PhysicsPipeline, ChannelEventCollector};
+use rapier2d::pipeline::{ChannelEventCollector, PhysicsPipeline};
+use std::collections::HashMap;
 
 pub struct PhysicsPlugin;
 
@@ -27,6 +30,7 @@ pub struct PhysicsResources {
     event_handler: ChannelEventCollector,
     contact_receive: Receiver<RapierContactEvent>,
     intersection_receive: Receiver<RapierIntersectionEvent>,
+    collider_entity_mapping: HashMap<ColliderHandle, Entity>,
 }
 
 impl Default for PhysicsResources {
@@ -47,11 +51,30 @@ impl Default for PhysicsResources {
             event_handler: ChannelEventCollector::new(intersection_send, contact_send),
             contact_receive,
             intersection_receive,
+            collider_entity_mapping: HashMap::new(),
         }
     }
 }
 
-struct ContactEvent;
+#[derive(Clone, Copy, Debug)]
+enum ContactEvent {
+    Started(Entity, Entity),
+    Stopped(Entity, Entity),
+}
+
+impl ContactEvent {
+    fn map(ce: &RapierContactEvent, mapping: &HashMap<ColliderHandle, Entity>) -> ContactEvent {
+        match ce {
+            RapierContactEvent::Started(a, b) => {
+                ContactEvent::Started(*mapping.get(a).unwrap(), *mapping.get(b).unwrap())
+            }
+            RapierContactEvent::Stopped(a, b) => {
+                ContactEvent::Stopped(*mapping.get(a).unwrap(), *mapping.get(b).unwrap())
+            }
+        }
+    }
+}
+
 struct IntersectionEvent;
 
 impl Plugin for PhysicsPlugin {
@@ -100,11 +123,12 @@ fn pipe_events(
     #[resource] sender: &mut Sender<ContactEvent>,
 ) {
     // Drain the master receiver so it does not get clogged
-    for _ in receiver.try_iter() { }
+    for _ in receiver.try_iter() {}
 
-    for ie in physics.intersection_receive.try_iter() { }
+    for ie in physics.intersection_receive.try_iter() {}
     for ce in physics.contact_receive.try_iter() {
-        sender.send(ContactEvent);
+        let ce = ContactEvent::map(&ce, &physics.collider_entity_mapping);
+        sender.send(ce);
     }
 }
 
@@ -119,7 +143,7 @@ fn simulation_step(#[resource] physics: &mut PhysicsResources) {
         &mut physics.colliders,
         &mut physics.joints,
         &(),
-        &(),
+        &physics.event_handler,
     );
 }
 
@@ -141,6 +165,7 @@ fn sync_rigidbodies(
 
 #[system(for_each)]
 fn create_rigidbodies(
+    entity: &Entity,
     rigidbody: &mut RigidBody2D,
     Position(p): &Position,
     #[resource] physics: &mut PhysicsResources,
@@ -162,6 +187,7 @@ fn create_rigidbodies(
             .friction(0.8)
             .build();
         let ch = physics.colliders.insert(c, rbh, &mut physics.bodies);
+        physics.collider_entity_mapping.insert(ch, entity.clone());
         rigidbody.handles = Some((rbh, ch));
     }
 }
