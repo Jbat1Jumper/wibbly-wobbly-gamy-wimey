@@ -20,6 +20,8 @@ impl Rule {
 }
 
 trait Definition {
+    fn mem_size(&self) -> usize;
+    fn start_room(&self) -> Room;
     fn get_rules(&self) -> Vec<Rule>;
     fn available_doors(&self, r: Room) -> Vec<DoorNumber>;
     fn is_final(&self, r: Room) -> bool;
@@ -50,7 +52,6 @@ struct State<Def> {
     memoized: HashMap<Room, RoomMemory>,
     definition: Def,
     visited: String,
-    mem_size: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -65,11 +66,11 @@ type CreatedNewRoom = bool;
 
 impl<Def> State<Def>
 where
-    Def: Definition
+    Def: Definition,
 {
-    fn new(mem_size: usize, s: Room, definition: Def) -> Self {
+    fn new(definition: Def) -> Self {
+        let s = definition.start_room();
         State {
-            mem_size,
             definition,
             current_room: s,
             visited: s.into(),
@@ -83,7 +84,11 @@ where
     }
 
     fn step(&mut self, dn: DoorNumber) -> Result<CreatedNewRoom, Problem> {
-        if !self.definition.available_doors(self.current_room).contains(&dn) {
+        if !self
+            .definition
+            .available_doors(self.current_room)
+            .contains(&dn)
+        {
             return Err(Problem::NoDoorInRoom(self.current_room, dn));
         }
 
@@ -142,12 +147,12 @@ where
             // are reachable)
             if self.memoized.contains_key(next_room) {
                 let is_going_to_be_removed =
-                    *next_room == oldest_room && self.memoized.len() > self.mem_size;
+                    *next_room == oldest_room && self.memoized.len() > self.definition.mem_size();
 
                 if !is_going_to_be_removed {
                     return Err(Problem::MultipleReachableMemoriesForRoom(
                         self.visited.clone(),
-                        self.mem_size,
+                        self.definition.mem_size(),
                     ));
                 }
             }
@@ -163,7 +168,7 @@ where
                 },
             );
 
-            if self.memoized.len() > (self.mem_size + 1) && oldest_room != *next_room {
+            if self.memoized.len() > (self.definition.mem_size() + 1) && oldest_room != *next_room {
                 self.memoized.remove(&oldest_room);
                 for (r, m) in self.memoized.iter_mut() {
                     m.connections.retain(|dn, nr| *nr != oldest_room);
@@ -177,10 +182,16 @@ where
     }
 }
 
-
-struct TestDefinition;
+#[derive(Clone, Debug)]
+struct TestDefinition(usize, Room);
 
 impl Definition for TestDefinition {
+    fn mem_size(&self) -> usize {
+        self.0
+    }
+    fn start_room(&self) -> Room {
+        self.1
+    }
     fn can_return(&self, r: Room) -> bool {
         r != "S"
     }
@@ -246,14 +257,14 @@ pub fn test_regex() {
 
 #[test]
 pub fn can_do_single_step() {
-    let mut state = State::new(0, "S", TestDefinition);
+    let mut state = State::new(TestDefinition(0, "S"));
     state.step(1).unwrap();
     assert_eq!(state.current_room, "a", "Current room differs");
 }
 
 #[test]
 pub fn walk_till_X() {
-    let mut state = State::new(0, "S", TestDefinition);
+    let mut state = State::new(TestDefinition(0, "S"));
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -263,7 +274,7 @@ pub fn walk_till_X() {
 
 #[test]
 pub fn walk_with_no_return() {
-    let mut state = State::new(0, "S", TestDefinition);
+    let mut state = State::new(TestDefinition(0, "S"));
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -276,7 +287,7 @@ pub fn walk_with_no_return() {
 
 #[test]
 pub fn walk_with_return() {
-    let mut state = State::new(1, "S", TestDefinition);
+    let mut state = State::new(TestDefinition(1, "S"));
     state.step(1).unwrap();
     state.step(2).unwrap();
     assert_eq!(state.current_room, "c", "Current room differs");
@@ -286,7 +297,7 @@ pub fn walk_with_return() {
 
 #[test]
 pub fn walk_till_F() {
-    let mut state = State::new(3, "S", TestDefinition);
+    let mut state = State::new(TestDefinition(3, "S"));
     state.step(1).unwrap();
     state.step(2).unwrap();
     state.step(0).unwrap();
@@ -298,7 +309,7 @@ pub fn walk_till_F() {
 
 #[test]
 pub fn cant_have_two_a() {
-    let mut state = State::new(3, "S", TestDefinition);
+    let mut state = State::new(TestDefinition(3, "S"));
     state.step(1).unwrap();
     state.step(1).unwrap();
     state.step(1).unwrap();
@@ -311,7 +322,7 @@ pub fn cant_have_two_a() {
 
 #[test]
 pub fn if_older_room_is_removed_is_ok_that_is_the_same() {
-    let mut state = State::new(2, "S", TestDefinition);
+    let mut state = State::new(TestDefinition(2, "S"));
     state.step(1).unwrap();
     state.step(1).unwrap();
     state.step(1).unwrap();
@@ -325,7 +336,7 @@ pub fn if_older_room_is_removed_is_ok_that_is_the_same() {
 
 #[test]
 pub fn should_fail_if_older_room_is_the_same_as_the_new_but_isnt_removed() {
-    let mut state = State::new(3, "a", TestDefinition);
+    let mut state = State::new(TestDefinition(3, "a"));
     state.step(1).unwrap();
     state.step(1).unwrap();
     let r = state.step(1);
