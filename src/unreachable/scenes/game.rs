@@ -89,7 +89,7 @@ fn initialize_base_tileset(resources: &mut Resources) {
             ],
             12 => [
                 X,       X,       X,
-                Solid,   Wall,    Solid,
+                Solid,   Wall,    Door,
                 X,       Ground,  X,
             ],
             27 => [
