@@ -67,7 +67,7 @@ impl Default for Vehicle {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum Button {
     Start,
     A,
@@ -116,7 +116,7 @@ pub enum SceneCommand {
 #[derive(Clone, Copy, Debug)]
 pub struct SceneRef(pub &'static str);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonState {
     Pressed,
     Released,

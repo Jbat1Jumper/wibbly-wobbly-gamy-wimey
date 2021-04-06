@@ -30,6 +30,7 @@ pub struct PhysicsResources {
     event_handler: ChannelEventCollector,
     contact_receive: Receiver<RapierContactEvent>,
     intersection_receive: Receiver<RapierIntersectionEvent>,
+    entity_rigidbody_mapping: HashMap<Entity, RigidBodyHandle>,
     collider_entity_mapping: HashMap<ColliderHandle, Entity>,
 }
 
@@ -52,25 +53,31 @@ impl Default for PhysicsResources {
             contact_receive,
             intersection_receive,
             collider_entity_mapping: HashMap::new(),
+            entity_rigidbody_mapping: HashMap::new(),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-enum ContactEvent {
+pub enum ContactEvent {
     Started(Entity, Entity),
     Stopped(Entity, Entity),
 }
 
 impl ContactEvent {
-    fn map(ce: &RapierContactEvent, mapping: &HashMap<ColliderHandle, Entity>) -> ContactEvent {
+    fn map(
+        ce: &RapierContactEvent,
+        mapping: &HashMap<ColliderHandle, Entity>,
+    ) -> Vec<ContactEvent> {
         match ce {
-            RapierContactEvent::Started(a, b) => {
-                ContactEvent::Started(*mapping.get(a).unwrap(), *mapping.get(b).unwrap())
-            }
-            RapierContactEvent::Stopped(a, b) => {
-                ContactEvent::Stopped(*mapping.get(a).unwrap(), *mapping.get(b).unwrap())
-            }
+            RapierContactEvent::Started(a, b) => vec![
+                ContactEvent::Started(*mapping.get(a).unwrap(), *mapping.get(b).unwrap()),
+                ContactEvent::Started(*mapping.get(b).unwrap(), *mapping.get(a).unwrap()),
+            ],
+            RapierContactEvent::Stopped(a, b) => vec![
+                ContactEvent::Stopped(*mapping.get(a).unwrap(), *mapping.get(b).unwrap()),
+                ContactEvent::Stopped(*mapping.get(b).unwrap(), *mapping.get(a).unwrap()),
+            ],
         }
     }
 }
@@ -82,10 +89,15 @@ impl Plugin for PhysicsPlugin {
         "PhysicsPlugin".into()
     }
 
-    fn init(&mut self, _world: &mut World, resources: &mut Resources) {
+    fn init(&mut self, world: &mut World, resources: &mut Resources) {
         let (sender, receiver) = unbounded::<ContactEvent>();
         resources.insert(sender);
         resources.insert(receiver);
+
+        let (e_sender, e_receiver) = unbounded::<legion::world::Event>();
+        world.subscribe(e_sender, legion::any());
+        resources.insert(e_receiver);
+
         resources.insert(PhysicsResources::default());
     }
 
@@ -95,6 +107,7 @@ impl Plugin for PhysicsPlugin {
             .add_system(simulation_step_system())
             .add_system(sync_rigidbodies_system())
             .add_system(pipe_events_system())
+            .add_system(remove_deleted_bodies_system())
             .build()
             .execute(world, resources);
     }
@@ -111,6 +124,11 @@ impl Plugin for PhysicsPlugin {
     ) -> Option<Schedule> {
         // Override all physics resources on scene change because
         // scene changes removes all handles to the rigidbodies
+        
+        let (e_sender, e_receiver) = unbounded::<legion::world::Event>();
+        world.subscribe(e_sender, legion::any());
+        resources.insert(e_receiver);
+
         resources.insert(PhysicsResources::default());
         None
     }
@@ -127,8 +145,35 @@ fn pipe_events(
 
     for ie in physics.intersection_receive.try_iter() {}
     for ce in physics.contact_receive.try_iter() {
-        let ce = ContactEvent::map(&ce, &physics.collider_entity_mapping);
-        sender.send(ce);
+        let events = ContactEvent::map(&ce, &physics.collider_entity_mapping);
+        for ce in events {
+            sender.send(ce);
+        }
+    }
+}
+
+#[system]
+fn remove_deleted_bodies(
+    #[resource] physics: &mut PhysicsResources,
+    #[resource] receiver: &mut Receiver<legion::world::Event>,
+) {
+    for e in receiver.try_iter() {
+        match e {
+            legion::world::Event::EntityRemoved(e, _) => {
+                if let Some(rbh) = physics.entity_rigidbody_mapping.get(&e) {
+                    // println!("Deleted {:?} with rigidbody handle {:?}", e, rbh);
+                    if let Some(rb) = physics.bodies.remove(*rbh, &mut physics.colliders, &mut physics.joints) {
+                        for ch in rb.colliders() {
+                            physics.collider_entity_mapping.remove(ch);
+                        }
+                    }
+                    physics.entity_rigidbody_mapping.remove(&e);
+                }
+            },
+            // legion::world::Event::ArchetypeCreated(_),
+            // legion::world::Event::EntityInserted(e, _),
+            _ => {},
+        }
     }
 }
 
@@ -188,6 +233,7 @@ fn create_rigidbodies(
             .build();
         let ch = physics.colliders.insert(c, rbh, &mut physics.bodies);
         physics.collider_entity_mapping.insert(ch, entity.clone());
+        physics.entity_rigidbody_mapping.insert(entity.clone(), rbh);
         rigidbody.handles = Some((rbh, ch));
     }
 }
