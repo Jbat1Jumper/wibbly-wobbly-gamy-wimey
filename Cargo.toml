@@ -10,7 +10,7 @@ edition = "2018"
 ggez = "0.5"
 glam = { version = "0.12", features=["mint"] }
 pyxel = { version = "0.2", features=["images"] }
-legion = "0.3" 
+legion = "0.4"
 image = "0.22"
 rapier2d = { version = "0.6", features=["simd-stable"] }
 crossbeam-channel = "0.5"
