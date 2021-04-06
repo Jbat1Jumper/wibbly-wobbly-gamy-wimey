@@ -15,15 +15,36 @@ mod level_gen;
 mod room_blueprint_to_world;
 mod room_gen;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ChabonKind {
     Player,
     Blob,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct JoystickControlledVehicle {
-    stick: Vec2,
+    input_map: HashMap<Button, ButtonState>,
+}
+
+impl JoystickControlledVehicle {
+    pub fn stick(&self) -> Vec2 {
+        let mut stick = Vec2::new(0.0, 0.0);
+
+        for (b, bs) in self.input_map.iter() {
+            let direction = match b {
+                Button::Down => vec2_down(),
+                Button::Up => vec2_up(),
+                Button::Left => vec2_left(),
+                Button::Right => vec2_right(),
+                _ => Vec2::new(0.0, 0.0),
+            };
+            if *bs == ButtonState::Pressed {
+                stick += direction;
+            }
+        }
+
+        stick.normalize()
+    }
 }
 
 fn prototype_player(cmd: &mut CommandBuffer) -> Entity {
@@ -116,6 +137,7 @@ enum RoomCommand {
 
 pub struct GameScene {}
 
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CurrentRoom(pub &'static str);
 
 impl GameScene {
@@ -128,15 +150,26 @@ impl GameScene {
         resources.insert(cmds);
         resources.insert(GameSceneState::Initial);
         resources.insert(CurrentRoom("S"));
+        resources.insert(LoadRoom(true));
 
+        let dd = dungeon_definition::lvl_1();
+        let lvl_gen_state = level_gen::State::new(dd);
+        resources.insert(lvl_gen_state);
+
+        let contact_events: Receiver<ContactEvent> =
+            (*resources.get::<Receiver<ContactEvent>>().unwrap()).clone();
+
+        println!("Returning schedule");
         Schedule::builder()
             .add_system(update_game_scene_system())
             .add_system(update_state_transitions_system())
             .add_system(update_chabon_sprites_system())
+            .add_system(handle_door_contact_system(contact_events))
             .add_system(update_sprites_system_that_should_be_in_common_mod_system())
             .add_system(update_room_system())
             .add_system(move_vehicles_system())
             .add_system(update_joystick_controlled_vehicles_system())
+            .add_system(load_room_system())
             .build()
     }
 }
@@ -160,26 +193,18 @@ impl Default for GameSceneState {
 
 #[system]
 fn update_state_transitions(
-    cmd: &mut CommandBuffer,
     #[resource] state: &mut GameSceneState,
-    #[resource] tileset: &room_blueprint_to_world::Tileset,
 ) {
     use GameSceneState::*;
     // let state = resources.get_or_default::<GameSceneState>();
     match *state {
         Initial => {
-            use room_gen::model::RoomGenerator;
-            let bp = room_gen::Lvl1RoomGenerator::create("S");
-            room_blueprint_to_world::create(&bp, cmd, tileset);
-            prototype_player(cmd);
-
             *state = EnteringRoom;
         }
         EnteringRoom => {
             *state = Play;
         }
-        Play => {
-        }
+        Play => {}
         ExitingRoom => {
             *state = EnteringRoom;
         }
@@ -251,6 +276,102 @@ fn update_sprites_system_that_should_be_in_common_mod(
     }
 }
 
+use crate::physics::ContactEvent;
+use crossbeam_channel::Receiver;
+use legion::world::SubWorld;
+pub mod dungeon_definition;
+
+use dungeon_definition::DungeonDefinition;
+
+struct LoadRoom(bool);
+struct LastDoorUsed(usize);
+
+#[system]
+#[read_component(room_gen::model::Tile)]
+#[read_component(ChabonKind)]
+fn load_room(
+    world: &SubWorld,
+    cmd: &mut CommandBuffer,
+    #[resource] tileset: &room_blueprint_to_world::Tileset,
+    #[resource] load_room: &mut LoadRoom,
+    #[resource] lvl_gen_state: &mut level_gen::State<DungeonDefinition>,
+) {
+    if let LoadRoom(true) = load_room {
+
+        // Delete old room entities 
+        let mut query = <(Entity, &ChabonKind)>::query();
+        for (entity, _) in query.iter(world) {
+            cmd.remove(*entity);
+        }
+        let mut query = <(Entity, &room_gen::model::Tile)>::query();
+        for (entity, _) in query.iter(world) {
+            cmd.remove(*entity);
+        }
+
+        // Create new room
+        use room_gen::model::RoomGenerator;
+        let bp = lvl_gen_state.definition.create(lvl_gen_state.current_room);
+        room_blueprint_to_world::create(&bp, cmd, tileset);
+        prototype_player(cmd);
+
+        *load_room = LoadRoom(false);
+    }
+}
+
+// PLS TODO: Refactor this, it looks really dirty
+#[system]
+#[read_component(room_gen::model::Tile)]
+#[read_component(ChabonKind)]
+fn handle_door_contact(
+    world: &SubWorld,
+    #[state] contact_events: &Receiver<ContactEvent>,
+    #[resource] current_room: &mut CurrentRoom,
+    #[resource] load_room: &mut LoadRoom,
+    #[resource] lvl_gen_state: &mut level_gen::State<DungeonDefinition>,
+) {
+    for e in contact_events.try_iter() {
+        match e {
+            ContactEvent::Started(this, that) => {
+                let mut c = || {
+                    let chabon = world
+                        .entry_ref(this)
+                        .map_err(|_| "No chabon componenet")?
+                        .get_component::<ChabonKind>()
+                        .map_err(|_| "No chabon componenet")?
+                        .clone();
+
+                    if chabon == ChabonKind::Player {
+                        let tile = world
+                            .entry_ref(that)
+                            .map_err(|_| "No chabon componenet")?
+                            .get_component::<room_gen::model::Tile>()
+                            .map_err(|_| "No tile componenet")?
+                            .clone();
+                        if let room_gen::model::Tile::Door(dn) = tile {
+                            println!("Before {:?}", current_room);
+                            println!("Going through door!");
+                            let res = lvl_gen_state
+                                .step(dn);
+                            *current_room = CurrentRoom(lvl_gen_state.current_room);
+                            println!("Result {:?}", res);
+                            println!("After {:?}", current_room);
+                            // println!("State {:#?}", lvl_gen_state);
+                            *load_room = LoadRoom(true);
+                        }
+                    }
+
+                    let res: Result<(), &'static str> = Ok(());
+                    res
+                };
+
+                c();
+            }
+            _ => {}
+        }
+    }
+    // TODO: Do something
+}
+
 #[system]
 fn update_room(#[resource] command_buffer: &Vec<RoomCommand>) {
     // TODO: Do something
@@ -290,28 +411,8 @@ fn update_joystick_controlled_vehicles(
     #[resource] input: &Vec<(Button, ButtonState)>,
 ) {
     for (b, bs) in input.iter() {
-        let direction = match b {
-            Button::Down => vec2_down(),
-            Button::Up => vec2_up(),
-            Button::Left => vec2_left(),
-            Button::Right => vec2_right(),
-            _ => Vec2::new(0.0, 0.0),
-        };
-
-        let polarity = match bs {
-            ButtonState::Pressed => 1.0,
-            ButtonState::Released => -1.0,
-        };
-
-        controller.stick += direction * polarity;
-        if controller.stick.distance(Vec2::zero()) > 0.01 {
-            controller.stick = Vec2::new(
-                // TODO: Change to .clamp() when on rust-1.50
-                controller.stick.x.min(1.0).max(-1.0),
-                controller.stick.y.min(1.0).max(-1.0),
-            );
-        }
+        controller.input_map.insert(*b, *bs);
     }
 
-    vehicle.force += controller.stick * vehicle.speed;
+    vehicle.force += controller.stick() * vehicle.speed;
 }

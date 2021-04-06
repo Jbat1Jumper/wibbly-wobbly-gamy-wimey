@@ -1,74 +1,74 @@
 use regex::Regex;
 use std::collections::HashMap;
 
-type Room = &'static str;
+pub type Room = &'static str;
 
-type DoorNumber = usize;
+pub type DoorNumber = usize;
 
-type Age = usize;
+pub type Age = usize;
 
 #[derive(Clone, Debug)]
-struct Rule(Regex, DoorNumber, Room);
+pub struct Rule(Regex, DoorNumber, Room);
 
-struct IncompleteRule1(Regex);
-struct IncompleteRule2(Regex, DoorNumber);
+pub struct IncompleteRule1(Regex);
+pub struct IncompleteRule2(Regex, DoorNumber);
 
 impl Rule {
-    fn at(pattern: &'static str) -> IncompleteRule1 {
+    pub fn at(pattern: &'static str) -> IncompleteRule1 {
         IncompleteRule1(Regex::new(&format!("({})$", pattern)).unwrap())
     }
 }
 
-trait Definition {
+pub trait LevelGenDefinition {
     fn mem_size(&self) -> usize;
     fn start_room(&self) -> Room;
     fn get_rules(&self) -> Vec<Rule>;
     fn available_doors(&self, r: Room) -> Vec<DoorNumber>;
     fn is_final(&self, r: Room) -> bool;
-    fn can_return(&self, r: Room) -> bool;
+    // fn can_return(&self, r: Room) -> bool;
 }
 
 impl IncompleteRule1 {
-    fn through(self, dn: DoorNumber) -> IncompleteRule2 {
+    pub fn through(self, dn: DoorNumber) -> IncompleteRule2 {
         IncompleteRule2(self.0, dn)
     }
 }
 
 impl IncompleteRule2 {
-    fn gets_to(self, room: Room) -> Rule {
+    pub fn gets_to(self, room: Room) -> Rule {
         Rule(self.0, self.1, room)
     }
 }
 
 #[derive(Clone, Debug)]
-struct RoomMemory {
-    age: usize,
-    connections: HashMap<DoorNumber, Room>,
+pub struct RoomMemory {
+    pub age: usize,
+    pub connections: HashMap<DoorNumber, Room>,
 }
 
 #[derive(Clone, Debug)]
-struct State<Def> {
-    current_room: Room,
-    memoized: HashMap<Room, RoomMemory>,
-    definition: Def,
-    visited: String,
+pub struct State<Def> {
+    pub current_room: Room,
+    pub memoized: HashMap<Room, RoomMemory>,
+    pub definition: Def,
+    pub visited: String,
 }
 
 #[derive(Clone, Debug)]
-enum Problem {
+pub enum Problem {
     NoDoorInRoom(Room, DoorNumber),
     NoRuleMatchesFor(String, DoorNumber),
     MultipleMatchesFor(String, DoorNumber, Vec<Rule>),
     MultipleReachableMemoriesForRoom(String, usize),
 }
 
-type CreatedNewRoom = bool;
+pub type CreatedNewRoom = bool;
 
 impl<Def> State<Def>
 where
-    Def: Definition,
+    Def: LevelGenDefinition,
 {
-    fn new(definition: Def) -> Self {
+    pub fn new(definition: Def) -> Self {
         let s = definition.start_room();
         State {
             definition,
@@ -83,7 +83,7 @@ where
         }
     }
 
-    fn step(&mut self, dn: DoorNumber) -> Result<CreatedNewRoom, Problem> {
+    pub fn step(&mut self, dn: DoorNumber) -> Result<CreatedNewRoom, Problem> {
         if !self
             .definition
             .available_doors(self.current_room)
@@ -168,6 +168,8 @@ where
                 },
             );
 
+            self.memoized.get_mut(&self.current_room).unwrap().connections.insert(dn, *next_room);
+
             if self.memoized.len() > (self.definition.mem_size() + 1) && oldest_room != *next_room {
                 self.memoized.remove(&oldest_room);
                 for (r, m) in self.memoized.iter_mut() {
@@ -182,19 +184,21 @@ where
     }
 }
 
+
+
 #[derive(Clone, Debug)]
 struct TestDefinition(usize, Room);
 
-impl Definition for TestDefinition {
+impl LevelGenDefinition for TestDefinition {
     fn mem_size(&self) -> usize {
         self.0
     }
     fn start_room(&self) -> Room {
         self.1
     }
-    fn can_return(&self, r: Room) -> bool {
-        r != "S"
-    }
+    // fn can_return(&self, r: Room) -> bool {
+    //     r != "S"
+    // }
 
     fn is_final(&self, r: Room) -> bool {
         r == "F"

@@ -1,8 +1,6 @@
 pub mod model {
     use crate::common::*;
-
-    pub type DoorNumber = usize;
-    pub type Room = &'static str;
+    use crate::unreachable::scenes::game::level_gen::{Room, DoorNumber};
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Tile {
@@ -19,16 +17,17 @@ pub mod model {
         Spikes,
     }
 
+    #[derive(Clone, Debug)]
     pub struct RoomBlueprint {
-        pub tiles: Vec<Vec<Tile>>,
-        pub objects: Vec<Vec<Option<Object>>>,
+        pub tiles: Vec<Tile>,
+        pub objects: Option<Vec<Option<Object>>>,
         pub size: (usize, usize),
     }
 
     impl RoomBlueprint {
         pub fn tile_at(&self, pos: (i32, i32)) -> Tile {
             if self.in_bounds(pos) {
-                self.tiles[pos.1 as usize][pos.0 as usize]
+                self.tiles[(pos.0 as usize + pos.1 as usize * self.size.0)]
             } else {
                 Tile::Empty
             }
@@ -44,11 +43,12 @@ pub mod model {
         }
 
         pub fn object_at(&self, pos: (i32, i32)) -> Option<Object> {
-            if self.in_bounds(pos) {
-                self.objects[pos.1 as usize][pos.0 as usize]
-            } else {
-                None
+            if let Some(objects) = &self.objects {
+                if self.in_bounds(pos) {
+                    return objects[(pos.0 as usize + pos.1 as usize * self.size.0)]
+                }
             }
+            None
         }
 
         pub fn in_bounds(&self, pos: (i32, i32)) -> bool {
@@ -66,37 +66,7 @@ pub mod model {
 
     pub trait RoomGenerator {
         //type Rng;
-        fn create(room: Room /*, rng: &mut Self::Rng*/) -> RoomBlueprint;
+        fn create(&self, room: Room /*, rng: &mut Self::Rng*/) -> RoomBlueprint;
     }
 }
 
-use model::*;
-
-pub struct Lvl1RoomGenerator;
-
-impl RoomGenerator for Lvl1RoomGenerator {
-    fn create(room: Room) -> RoomBlueprint {
-        use Tile::*;
-        match room {
-            #[rustfmt::skip]
-            "S" => RoomBlueprint {
-                size: (5, 5),
-                tiles: vec![
-                    vec![Wall, Wall,   Wall,   Wall,   Wall],
-                    vec![Wall, Ground, Ground, Ground, Wall],
-                    vec![Wall, Ground, Ground, Ground, Door(1)],
-                    vec![Wall, Ground, Ground, Ground, Wall],
-                    vec![Wall, Wall,   Wall,   Wall,   Wall],
-                ],
-                objects: vec![
-                    vec![None, None, None, None, None],
-                    vec![None, None, None, None, None],
-                    vec![None, None, None, None, None],
-                    vec![None, None, None, None, None],
-                    vec![None, None, None, None, None],
-                ],
-            },
-            r => panic!("Dont know how to create room {} at Lvl1", r),
-        }
-    }
-}
