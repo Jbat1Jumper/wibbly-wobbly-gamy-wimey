@@ -38,6 +38,7 @@ impl Plugin for GgezBackend {
             ..
         } = self;
         ggez_ctx.timer_context.tick();
+        ggez::timer::sleep(ggez::timer::f64_to_duration(1.0/70.0));
         ggez_events_loop.poll_events(|event| {
             ggez_ctx.process_event(&event);
             match event {
