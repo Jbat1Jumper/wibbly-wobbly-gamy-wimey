@@ -48,6 +48,23 @@ macro_rules! map(
      };
 );
 
+use legion::storage::Component;
+use legion::world::SubWorld;
+
+pub trait GetComponentFromSubWorld {
+    fn try_get_cloned<C: Clone + Component>(&self, e: Entity) -> Option<C>;
+}
+
+impl GetComponentFromSubWorld for SubWorld<'_> {
+    fn try_get_cloned<C: Clone + Component>(&self, e: Entity) -> Option<C> {
+        self.entry_ref(e)
+            .ok()
+            .map(|entry| entry.get_component::<C>().ok().map(|c| c.clone()))
+            .flatten()
+    }
+}
+
+
 #[derive(Clone, Copy, Debug)]
 pub struct Vehicle {
     pub force: Vec2,

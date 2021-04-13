@@ -137,7 +137,7 @@ enum RoomCommand {
 
 pub struct GameScene {}
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CurrentRoom(pub &'static str);
 
 impl GameScene {
@@ -192,9 +192,7 @@ impl Default for GameSceneState {
 }
 
 #[system]
-fn update_state_transitions(
-    #[resource] state: &mut GameSceneState,
-) {
+fn update_state_transitions(#[resource] state: &mut GameSceneState) {
     use GameSceneState::*;
     // let state = resources.get_or_default::<GameSceneState>();
     match *state {
@@ -297,8 +295,7 @@ fn load_room(
     #[resource] lvl_gen_state: &mut level_gen::State<DungeonDefinition>,
 ) {
     if let LoadRoom(true) = load_room {
-
-        // Delete old room entities 
+        // Delete old room entities
         let mut query = <(Entity, &ChabonKind)>::query();
         for (entity, _) in query.iter(world) {
             cmd.remove(*entity);
@@ -318,6 +315,7 @@ fn load_room(
     }
 }
 
+use room_gen::model::Tile;
 // PLS TODO: Refactor this, it looks really dirty
 #[system]
 #[read_component(room_gen::model::Tile)]
@@ -332,39 +330,18 @@ fn handle_door_contact(
     for e in contact_events.try_iter() {
         match e {
             ContactEvent::Started(this, that) => {
-                let mut c = || {
-                    let chabon = world
-                        .entry_ref(this)
-                        .map_err(|_| "No chabon componenet")?
-                        .get_component::<ChabonKind>()
-                        .map_err(|_| "No chabon componenet")?
-                        .clone();
-
-                    if chabon == ChabonKind::Player {
-                        let tile = world
-                            .entry_ref(that)
-                            .map_err(|_| "No chabon componenet")?
-                            .get_component::<room_gen::model::Tile>()
-                            .map_err(|_| "No tile componenet")?
-                            .clone();
-                        if let room_gen::model::Tile::Door(dn) = tile {
-                            println!("Before {:?}", current_room);
-                            println!("Going through door!");
-                            let res = lvl_gen_state
-                                .step(dn);
-                            *current_room = CurrentRoom(lvl_gen_state.current_room);
-                            println!("Result {:?}", res);
-                            println!("After {:?}", current_room);
-                            // println!("State {:#?}", lvl_gen_state);
-                            *load_room = LoadRoom(true);
-                        }
+                if let Some(ChabonKind::Player) = world.try_get_cloned(this) {
+                    if let Some(Tile::Door(dn)) = world.try_get_cloned(that) {
+                        println!("Before {:?}", current_room);
+                        println!("Going through door!");
+                        let res = lvl_gen_state.step(dn);
+                        *current_room = CurrentRoom(lvl_gen_state.current_room);
+                        println!("Result {:?}", res);
+                        println!("After {:?}", current_room);
+                        // println!("State {:#?}", lvl_gen_state);
+                        *load_room = LoadRoom(true);
                     }
-
-                    let res: Result<(), &'static str> = Ok(());
-                    res
-                };
-
-                c();
+                }
             }
             _ => {}
         }
