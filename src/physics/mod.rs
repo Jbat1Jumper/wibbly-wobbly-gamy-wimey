@@ -31,6 +31,7 @@ pub struct PhysicsResources {
     contact_receive: Receiver<RapierContactEvent>,
     intersection_receive: Receiver<RapierIntersectionEvent>,
     entity_rigidbody_mapping: HashMap<Entity, RigidBodyHandle>,
+    entity_rigidbody_was_used: HashMap<Entity, bool>,
     collider_entity_mapping: HashMap<ColliderHandle, Entity>,
 }
 
@@ -54,6 +55,7 @@ impl Default for PhysicsResources {
             intersection_receive,
             collider_entity_mapping: HashMap::new(),
             entity_rigidbody_mapping: HashMap::new(),
+            entity_rigidbody_was_used: HashMap::new(),
         }
     }
 }
@@ -94,10 +96,6 @@ impl Plugin for PhysicsPlugin {
         resources.insert(sender);
         resources.insert(receiver);
 
-        let (e_sender, e_receiver) = unbounded::<legion::world::Event>();
-        world.subscribe(e_sender, legion::any());
-        resources.insert(e_receiver);
-
         resources.insert(PhysicsResources::default());
     }
 
@@ -107,7 +105,8 @@ impl Plugin for PhysicsPlugin {
             .add_system(simulation_step_system())
             .add_system(sync_rigidbodies_system())
             .add_system(pipe_events_system())
-            .add_system(remove_deleted_bodies_system())
+            .add_system(mark_used_bodies_system())
+            .add_system(remove_unused_bodies_system())
             .build()
             .execute(world, resources);
     }
@@ -124,11 +123,7 @@ impl Plugin for PhysicsPlugin {
     ) -> Option<Schedule> {
         // Override all physics resources on scene change because
         // scene changes removes all handles to the rigidbodies
-        
-        let (e_sender, e_receiver) = unbounded::<legion::world::Event>();
-        world.subscribe(e_sender, legion::any());
-        resources.insert(e_receiver);
-
+        println!("Load {:?} from physics plugin", scene);
         resources.insert(PhysicsResources::default());
         None
     }
@@ -152,33 +147,49 @@ fn pipe_events(
     }
 }
 
-#[system]
-fn remove_deleted_bodies(
+#[system(for_each)]
+#[filter(component::<RigidBody2D>())]
+fn mark_used_bodies(
+    entity: &Entity,
     #[resource] physics: &mut PhysicsResources,
-    #[resource] receiver: &mut Receiver<legion::world::Event>,
 ) {
-    for e in receiver.try_iter() {
-        match e {
-            legion::world::Event::EntityRemoved(e, _) => {
-                if let Some(rbh) = physics.entity_rigidbody_mapping.get(&e) {
-                    // println!("Deleted {:?} with rigidbody handle {:?}", e, rbh);
-                    if let Some(rb) = physics.bodies.remove(*rbh, &mut physics.colliders, &mut physics.joints) {
-                        for ch in rb.colliders() {
-                            physics.collider_entity_mapping.remove(ch);
-                        }
-                    }
-                    physics.entity_rigidbody_mapping.remove(&e);
+    physics.entity_rigidbody_was_used.insert(*entity, true);
+}
+
+#[system]
+fn remove_unused_bodies(#[resource] physics: &mut PhysicsResources) {
+    println!("Called to remove deleted bodies");
+    let entities_to_delete_rb = physics
+        .entity_rigidbody_was_used
+        .iter()
+        .filter_map(|(&e, &used)| if !used { Some(e) } else { None })
+        .collect::<Vec<_>>();
+
+    for e in entities_to_delete_rb.iter() {
+        if let Some(&rbh) = physics.entity_rigidbody_mapping.get(e) {
+            println!("Deleted {:?} with rigidbody handle {:?}", e, rbh);
+            if let Some(rb) =
+                physics
+                    .bodies
+                    .remove(rbh, &mut physics.colliders, &mut physics.joints)
+            {
+                for ch in rb.colliders() {
+                    physics.collider_entity_mapping.remove(ch);
                 }
-            },
-            // legion::world::Event::ArchetypeCreated(_),
-            // legion::world::Event::EntityInserted(e, _),
-            _ => {},
+            }
+            physics.entity_rigidbody_mapping.remove(e);
+            physics.entity_rigidbody_was_used.remove(e);
         }
+    }
+
+    for (_, was_used) in physics.entity_rigidbody_was_used.iter_mut() {
+        *was_used = false;
     }
 }
 
 #[system]
 fn simulation_step(#[resource] physics: &mut PhysicsResources) {
+    println!("Called to simulation_step");
     physics.pipeline.step(
         &physics.gravity,
         &physics.integration_parameters,
@@ -194,17 +205,20 @@ fn simulation_step(#[resource] physics: &mut PhysicsResources) {
 
 #[system(for_each)]
 fn sync_rigidbodies(
+    entity: &Entity,
     rigidbody: &RigidBody2D,
     position: &mut Position,
     #[resource] physics: &mut PhysicsResources,
 ) {
+    println!("Called to sync rigidbodies on {:?}", entity);
     if let Some((rbh, _ch)) = rigidbody.handles {
-        let rb = physics
-            .bodies
-            .get_mut(rbh)
-            .expect("RigidBody not found for handle on back sync");
-        let t = rb.position().translation.vector;
-        position.0 = Vec2::new(t.x, t.y);
+        if let Some(rb) = physics.bodies.get_mut(rbh).or_else(|| {
+            println!("Error when accesing handle: {:?}", rbh);
+            None
+        }) {
+            let t = rb.position().translation.vector;
+            position.0 = Vec2::new(t.x, t.y);
+        }
     }
 }
 
@@ -215,6 +229,7 @@ fn create_rigidbodies(
     Position(p): &Position,
     #[resource] physics: &mut PhysicsResources,
 ) {
+    println!("Called to create rigidbody on {:?}", entity);
     if rigidbody.handles.is_none() {
         let body_kind = if rigidbody.is_static {
             BodyStatus::Static
@@ -234,6 +249,9 @@ fn create_rigidbodies(
         let ch = physics.colliders.insert(c, rbh, &mut physics.bodies);
         physics.collider_entity_mapping.insert(ch, entity.clone());
         physics.entity_rigidbody_mapping.insert(entity.clone(), rbh);
+        physics
+            .entity_rigidbody_was_used
+            .insert(entity.clone(), true);
         rigidbody.handles = Some((rbh, ch));
     }
 }

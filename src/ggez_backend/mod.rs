@@ -24,6 +24,18 @@ pub struct GgezBackend {
     frames: usize,
 }
 
+/*
+ *  Check that => !Send and !Sync Resources
+ *
+ *  Some systems shouldn't be run on the thread pool, but need to be tied to the main thread. You
+ *  can schedule such systems by using .add_thread_local when constructing your schedule.  Usually,
+ *  a system is thread-local because it wants to access resources which are tied to the main
+ *  thread. For example, the graphics context.  Legion's Resources collection can store types which
+ *  are !Send and/or !Sync. A system which tries to access such a resource will itself be marked as
+ *  !Send and/or !Sync as appropriate, and Schedule will not allow you to add such a system as
+ *  anything but a thead-local system.
+ */
+
 impl Plugin for GgezBackend {
     fn name(&self) -> String {
         "GgezBackend".into()
