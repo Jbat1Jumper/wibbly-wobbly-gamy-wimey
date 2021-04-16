@@ -161,6 +161,7 @@ impl GameScene {
 
         println!("Returning schedule");
         Schedule::builder()
+            .add_system(create_gizmos_system())
             .add_system(update_game_scene_system())
             .add_system(update_state_transitions_system())
             .add_system(update_chabon_sprites_system())
@@ -348,6 +349,7 @@ fn handle_door_contact(
     }
     // TODO: Do something
 }
+
 
 #[system]
 fn update_room(#[resource] command_buffer: &Vec<RoomCommand>) {

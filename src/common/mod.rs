@@ -9,6 +9,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 use std::collections::{HashMap, HashSet};
 
+use legion::systems::CommandBuffer;
 use legion::*;
 
 use pyxel::Pyxel;
@@ -62,6 +63,98 @@ impl GetComponentFromSubWorld for SubWorld<'_> {
             .map(|entry| entry.get_component::<C>().ok().map(|c| c.clone()))
             .flatten()
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mesh {
+    definition: Vec<MeshCommand>,
+    dirty: bool,
+}
+
+impl Mesh {
+    pub fn new() -> Self {
+        Mesh {
+            definition: vec![],
+            dirty: true,
+        }
+    }
+
+    pub fn get_definition<'a>(&'a self) -> &'a Vec<MeshCommand> {
+        &self.definition
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    pub fn make_not_dirty_anymore(&mut self) {
+        self.dirty = true;
+    }
+}
+
+
+use std::ops::Sub;
+impl Sub<MeshCommand> for Mesh {
+    type Output = Self;
+
+    fn sub(mut self, cmd: MeshCommand) -> Self {
+        self.definition.push(cmd);
+        Mesh { dirty: true, ..self }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MeshCommand {
+    MoveTo(f32, f32),
+    LineTo(f32, f32),
+    SetFilled(bool),
+    SetColor(Color),
+    SetLineWidth(f32),
+    Circle(f32),
+    Triangle(f32, f32, f32, f32),
+}
+
+pub struct Meshes;
+
+impl Meshes {
+    pub fn gizmo() -> Mesh {
+        use MeshCommand::*;
+        use Color::*;
+        Mesh::new()
+            - SetFilled(true)
+            - SetColor(Red)
+            - LineTo(10.0, 0.0)
+            - Triangle(9.0, 1.0, 9.0, -1.0)
+            - MoveTo(0.0, 0.0)
+            - SetColor(Green)
+            - LineTo(0.0, 10.0)
+            - Triangle(1.0, 9.0, -1.0, 9.0)
+    }
+}
+
+
+#[system(for_each)]
+#[filter(component::<Position>() & !component::<Mesh>())]
+pub fn create_gizmos(
+    entity: &Entity,
+    cmd: &mut CommandBuffer,
+) {
+    cmd.add_component(*entity, Meshes::gizmo());
+}
+
+
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum Color {
+    White,
+    Black,
+    Red,
+    Green,
+    Blue,
+}
+
+impl Default for Color {
+    fn default() -> Self { Color::White }
 }
 
 

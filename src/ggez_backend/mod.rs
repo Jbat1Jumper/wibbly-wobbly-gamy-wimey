@@ -20,6 +20,7 @@ pub struct GgezBackend {
     ggez_events_loop: ggez::event::EventsLoop,
     text_resources: TextResources,
     sprite_resources: SpriteResources,
+    meshes: HashMap<Entity, ggez::graphics::Mesh>,
     frames: usize,
 }
 
@@ -38,7 +39,7 @@ impl Plugin for GgezBackend {
             ..
         } = self;
         ggez_ctx.timer_context.tick();
-        ggez::timer::sleep(ggez::timer::f64_to_duration(1.0/70.0));
+        ggez::timer::sleep(ggez::timer::f64_to_duration(1.0 / 70.0));
         ggez_events_loop.poll_events(|event| {
             ggez_ctx.process_event(&event);
             match event {
@@ -86,6 +87,16 @@ impl Plugin for GgezBackend {
         resources.insert(CurrentFrame(self.frames));
     }
 
+    fn load_scene(
+        &mut self,
+        world: &mut World,
+        resources: &mut Resources,
+        scene_ref: SceneRef,
+    ) -> Option<Schedule> {
+        self.meshes.clear();
+        None
+    }
+
     fn draw(&mut self, world: &World, resources: &Resources) {
         let CurrentFrame(frame) = *resources.get().expect("Error reading current frame");
 
@@ -99,12 +110,19 @@ impl Plugin for GgezBackend {
                     .render_text(&mut self.ggez_ctx, text)
                     .expect("Error drawing text");
 
-                graphics::draw(&mut self.ggez_ctx, rtext, (pos.clone(),));
+                graphics::draw(
+                    &mut self.ggez_ctx,
+                    rtext,
+                    ggez::graphics::DrawParam::default()
+                        .dest(*pos * 4.0)
+                        .scale([4.0, 4.0]),
+                );
             }
 
             // TODO: The ordering and layers in this part are hardcoded
             let mut tiles_count = 0;
             let mut sprites_count = 0;
+            let mut mesh_count = 0;
             {
                 let pyxel_files = resources.get_mut().expect("No pyxel files");
 
@@ -124,6 +142,70 @@ impl Plugin for GgezBackend {
                 for (sprite, transform, pos) in query.iter(world) {
                     self.draw_sprite(sprite, &"main".into(), transform, &*pyxel_files, pos);
                     sprites_count += 1;
+                }
+
+                let mut query = <(Entity, &Mesh, &Position)>::query();
+                for (entity, mesh, position) in query.iter(world) {
+                    if !self.meshes.contains_key(entity) || mesh.is_dirty() {
+                        let mut mb = ggez::graphics::MeshBuilder::new();
+                        let mut color = (255, 255, 255).into();
+                        let mut line_width = 0.5;
+                        let mut draw_mode = ggez::graphics::DrawMode::stroke(line_width);
+                        let (mut x0, mut y0) = (0f32, 0f32);
+
+                        for command in mesh.get_definition() {
+                            use MeshCommand::*;
+                            match command {
+                                MoveTo(x1, y1) => {
+                                    x0 = *x1;
+                                    y0 = *y1;
+                                }
+                                LineTo(x1, y1) => {
+                                    mb.line(&[[x0, y0], [*x1, *y1]], line_width, color)
+                                        .expect("Failed to render line");
+                                    x0 = *x1;
+                                    y0 = *y1;
+                                }
+                                SetFilled(yes) => {
+                                    draw_mode = if *yes {
+                                        ggez::graphics::DrawMode::fill()
+                                    } else {
+                                        ggez::graphics::DrawMode::stroke(line_width)
+                                    };
+                                }
+                                SetColor(c) => {
+                                    color = map_color(*c);
+                                }
+                                SetLineWidth(lw) => {
+                                    line_width = *lw;
+                                    draw_mode = ggez::graphics::DrawMode::stroke(line_width);
+                                }
+                                Circle(r) => {
+                                    mb.circle(draw_mode, [x0, y0], *r, 0.1, color);
+                                }
+                                Triangle(x1, y1, x2, y2) => {
+                                    mb.triangles(&[[x0, y0], [*x1, *y1], [*x2, *y2]], color)
+                                        .expect("Failed to render triangle");
+                                }
+                            }
+                        }
+                        let mesh = mb.build(&mut self.ggez_ctx).unwrap();
+                        self.meshes.insert(*entity, mesh);
+                    }
+
+                    let mesh = self.meshes.get(entity).unwrap();
+
+                    let Position(pos) = position;
+                    ggez::graphics::draw(
+                        &mut self.ggez_ctx,
+                        mesh,
+                        ggez::graphics::DrawParam::default()
+                            .dest([pos.x.round() * 4.0, pos.y.round() * 4.0])
+                            // .offset([0.5, 0.5])
+                            // .rotation(rotation.radians())
+                            .scale([4.0, 4.0]),
+                    );
+                    mesh_count += 1;
                 }
             }
 
@@ -148,6 +230,7 @@ impl GgezBackend {
             ggez_events_loop,
             sprite_resources,
             frames: 0,
+            meshes: HashMap::new(),
             text_resources: TextResources {
                 loaded_fonts: HashMap::new(),
                 rendered_texts: HashMap::new(),
@@ -243,6 +326,18 @@ impl GgezBackend {
         //panic!("No draw sprite me");
         Ok(())
     }
+}
+
+fn map_color(color: Color) -> ggez::graphics::Color {
+    use Color::*;
+    let rgb = match color {
+        Red => (255, 0, 0),
+        White => (255, 0, 0),
+        Black => (0, 0, 0),
+        Green => (0, 255, 0),
+        Blue => (0, 0, 255),
+    };
+    rgb.into()
 }
 
 pub struct SpriteResources {

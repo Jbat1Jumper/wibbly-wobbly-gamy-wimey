@@ -25,13 +25,13 @@ impl Intro {
 
         let font = Font::LiberationMono;
         world.push((
-            Text::new("SOGA", font, 32),
-            Position(Vec2::new(90.0, 90.0)),
+            Text::new("SOGA", font, 12),
+            Position(Vec2::new(20.0, 20.0)),
         ));
-
 
         Schedule::builder()
             .add_system(update_intro_system())
+            .add_system(create_gizmos_system())
             .build()
     }
 }
