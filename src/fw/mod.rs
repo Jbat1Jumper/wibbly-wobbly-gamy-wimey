@@ -106,8 +106,6 @@ impl Game {
                 }
             }
 
-            self.execute_commands_from_bus();
-
             for plugin in self.plugins.iter_mut() {
                 let started = Instant::now();
                 plugin.draw(&self.world, &self.resources);
@@ -118,6 +116,8 @@ impl Game {
                     })
                     .expect("Failed to send profile event");
             }
+
+            self.execute_commands_from_bus();
 
             profile_event_sender
                 .send(ProfileEvent::FrameFinished {
