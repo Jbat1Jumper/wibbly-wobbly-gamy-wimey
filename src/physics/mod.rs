@@ -123,7 +123,7 @@ impl Plugin for PhysicsPlugin {
     ) -> Option<Schedule> {
         // Override all physics resources on scene change because
         // scene changes removes all handles to the rigidbodies
-        println!("Load {:?} from physics plugin", scene);
+        //println!("Load {:?} from physics plugin", scene);
         resources.insert(PhysicsResources::default());
         None
     }
@@ -158,7 +158,7 @@ fn mark_used_bodies(
 
 #[system]
 fn remove_unused_bodies(#[resource] physics: &mut PhysicsResources) {
-    println!("Called to remove deleted bodies");
+    //println!("Called to remove deleted bodies");
     let entities_to_delete_rb = physics
         .entity_rigidbody_was_used
         .iter()
@@ -167,7 +167,7 @@ fn remove_unused_bodies(#[resource] physics: &mut PhysicsResources) {
 
     for e in entities_to_delete_rb.iter() {
         if let Some(&rbh) = physics.entity_rigidbody_mapping.get(e) {
-            println!("Deleted {:?} with rigidbody handle {:?}", e, rbh);
+            //println!("Deleted {:?} with rigidbody handle {:?}", e, rbh);
             if let Some(rb) =
                 physics
                     .bodies
@@ -189,7 +189,7 @@ fn remove_unused_bodies(#[resource] physics: &mut PhysicsResources) {
 
 #[system]
 fn simulation_step(#[resource] physics: &mut PhysicsResources) {
-    println!("Called to simulation_step");
+    //println!("Called to simulation_step");
     physics.pipeline.step(
         &physics.gravity,
         &physics.integration_parameters,
@@ -210,10 +210,10 @@ fn sync_rigidbodies(
     position: &mut Position,
     #[resource] physics: &mut PhysicsResources,
 ) {
-    println!("Called to sync rigidbodies on {:?}", entity);
+    //println!("Called to sync rigidbodies on {:?}", entity);
     if let Some((rbh, _ch)) = rigidbody.handles {
         if let Some(rb) = physics.bodies.get_mut(rbh).or_else(|| {
-            println!("Error when accesing handle: {:?}", rbh);
+            //println!("Error when accesing handle: {:?}", rbh);
             None
         }) {
             let t = rb.position().translation.vector;
@@ -229,7 +229,7 @@ fn create_rigidbodies(
     Position(p): &Position,
     #[resource] physics: &mut PhysicsResources,
 ) {
-    println!("Called to create rigidbody on {:?}", entity);
+    //println!("Called to create rigidbody on {:?}", entity);
     if rigidbody.handles.is_none() {
         let body_kind = if rigidbody.is_static {
             BodyStatus::Static
