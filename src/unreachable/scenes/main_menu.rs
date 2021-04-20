@@ -1,59 +1,47 @@
-use glam::f32::Vec2;
-
-use std::env;
-use std::path;
-use std::time::Duration;
-
-use std::sync::mpsc::{channel, Receiver, Sender};
-
-use std::collections::{HashMap, HashSet};
-
-use legion::*;
-
-use pyxel::Pyxel;
-
+use bevy::prelude::*;
 use crate::common::*;
+use glam::f32::Vec2;
+use super::UnScene;
 
-pub struct MainMenu {
-    world: World,
-}
+pub struct MainMenu;
 
-impl MainMenu {
-    pub fn init(world: &mut World, resources: &mut Resources) -> Schedule {
-        let font = Font::LiberationMono;
-
-        world.push((
-            Text::new("Lost and Found", font, 12),
-            Position(Vec2::new(10.0, 10.0)),
-        ));
-
-        world.push((
-            Text::new("Press space to start!", font, 18),
-            Position(Vec2::new(10.0, 25.0)),
-        ));
-
-        world.push((
-            Text::new("Or press esc to exit", font, 12),
-            Position(Vec2::new(10.0, 50.0)),
-        ));
-
-        Schedule::builder()
-            .add_system(update_main_menu_system())
-            .add_system(create_gizmos_system())
-            .build()
+impl Plugin for MainMenu {
+    fn build(&self, app: &mut AppBuilder) {
+        app.add_system_set(SystemSet::on_enter(UnScene::MainMenu).with_system(enter.system()))
+            .add_system_set(SystemSet::on_update(UnScene::MainMenu).with_system(update.system()))
+            .add_system_set(SystemSet::on_exit(UnScene::MainMenu).with_system(exit.system()))
     }
 }
 
-#[system]
-fn update_main_menu(
-    #[resource] cmd: &mut Vec<SceneCommand>,
-    #[resource] input: &Vec<(Button, ButtonState)>,
-) {
-    for (button, _state) in input.iter() {
-        match button {
-            Button::A => cmd.push(SceneCommand::GoTo(SceneRef("game"))),
-            Button::Start => cmd.push(SceneCommand::Exit),
-            _ => (),
-        }
+pub fn enter(mut commands: Commands) { 
+    let font = Font::LiberationMono;
+    commands.spawn_batch(vec![
+        (
+            Text::new("Lost and Found", font, 12),
+            Position(Vec2::new(10.0, 10.0)),
+        ),
+        (
+            Text::new("Press space to start!", font, 18),
+            Position(Vec2::new(10.0, 25.0)),
+        ),
+        (
+            Text::new("Or press esc to exit", font, 12),
+            Position(Vec2::new(10.0, 50.0)),
+        ),
+    ]);
+}
+
+fn update(keyboard: Res<Input<KeyCode>>, mut scene: ResMut<Sate<UnScene>>) {
+    if keyboard.just_pressed(KeyCode::J) {
+        scene.set(UnScene::GameScene);
+    }
+    if keyboard.just_pressed(KeyCode::Esc) {
+        scene.set(UnScene::Exit);
+    }
+}
+
+fn exit(mut commands: Commands, to_remove: Query<Entity, With<Text>>) {
+    for e in to_remove.iter() {
+        commands.entity(e).despawn();
     }
 }

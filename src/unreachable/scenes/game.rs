@@ -229,7 +229,6 @@ fn update_chabon_sprites(
     vehicle: &Vehicle,
     sprite: &mut Sprite,
     #[resource] LastFrameDuration(duration): &LastFrameDuration,
-    #[resource] sprite_sheets: &PyxelFiles,
     #[resource] CurrentFrame(frame): &CurrentFrame,
 ) {
     let dir = vec![
@@ -255,25 +254,8 @@ fn update_chabon_sprites(
         sprite.current_animation = new_animation;
         sprite.current_animation_time = 0.0;
     }
-
-    if frame % 100 == 0 {
-        println!("current_animation = {}", sprite.current_animation);
-    }
 }
 
-#[system(for_each)]
-fn update_sprites_system_that_should_be_in_common_mod(
-    sprite: &mut Sprite,
-    #[resource] LastFrameDuration(duration): &LastFrameDuration,
-    #[resource] sprite_sheets: &PyxelFiles,
-) {
-    let delta = duration.as_secs_f64();
-    if let Some(sprite_sheet) = sprite_sheets.0.get(&sprite.pyxel_file) {
-        if let Ok(duration) = sprite_sheet.get_animation_duration(&sprite.current_animation) {
-            sprite.current_animation_time = (sprite.current_animation_time + delta) % duration;
-        }
-    }
-}
 
 use crate::physics::ContactEvent;
 use crossbeam_channel::Receiver;

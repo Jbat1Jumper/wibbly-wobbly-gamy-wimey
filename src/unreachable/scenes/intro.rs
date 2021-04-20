@@ -1,52 +1,48 @@
-use ggez;
-use glam::f32::Vec2;
-
-use std::env;
-use std::path;
-use std::time::Duration;
-
-use std::sync::mpsc::{channel, Receiver, Sender};
-
-use std::collections::{HashMap, HashSet};
-
-use legion::*;
-
-use pyxel::Pyxel;
-
+use bevy::prelude::*;
 use crate::common::*;
+use glam::f32::Vec2;
+use std::time::Duration;
+use super::UnScene;
 
-pub struct Intro {
-    remaining: Duration,
-}
+pub struct Intro;
 
-impl Intro {
-    pub fn init(world: &mut World, resources: &mut Resources) -> Schedule {
-        resources.insert(RemainingIntroTime(Duration::from_secs(1)));
-
-        let font = Font::LiberationMono;
-        world.push((
-            Text::new("SOGA", font, 12),
-            Position(Vec2::new(20.0, 20.0)),
-        ));
-
-        Schedule::builder()
-            .add_system(update_intro_system())
-            .add_system(create_gizmos_system())
-            .build()
+impl Plugin for Intro {
+    fn build(&self, app: &mut AppBuilder) {
+        app.add_system_set(SystemSet::on_enter(UnScene::Intro).with_system(enter.system()))
+            .add_system_set(SystemSet::on_update(UnScene::Intro).with_system(update.system()))
+            .add_system_set(SystemSet::on_exit(UnScene::Intro).with_system(exit.system()))
     }
 }
 
-struct RemainingIntroTime(Duration);
+struct IntroState {
+    remaining_time: Duration,
+}
 
-#[system]
-fn update_intro(
-    #[resource] LastFrameDuration(delta): &LastFrameDuration,
-    #[resource] RemainingIntroTime(remaining): &mut RemainingIntroTime,
-    #[resource] cmd: &mut Vec<SceneCommand>,
+fn enter(mut commands: Commands) {
+    let font = Font::LiberationMono;
+    commands
+        .spawn()
+        .insert_bundle((Text::new("SOGA", font, 12), Position(Vec2::new(20.0, 20.0))))
+        .insert_resource(IntroState {
+            remaining_time: Duration::from_secs(1),
+        });
+}
+
+fn update(
+    lfd: Res<LastFrameDuration>,
+    mut intro: ResMut<IntroState>,
+    mut scene: ResMut<Sate<UnScene>>,
 ) {
-    if *remaining > *delta {
-        *remaining -= *delta;
+    let LastFrameDuration(delta) = lfd;
+    if *intro.remaining_time > *delta {
+        *intro.remaining_time -= *delta;
     } else {
-        cmd.push(SceneCommand::GoTo(SceneRef("main_menu")));
+        scene.set(UnScene::MainMenu).unwrap();
+    }
+}
+
+fn exit(mut commands: Commands, to_remove: Query<Entity, With<Text>>) {
+    for e in to_remove.iter() {
+        commands.entity(e).despawn();
     }
 }

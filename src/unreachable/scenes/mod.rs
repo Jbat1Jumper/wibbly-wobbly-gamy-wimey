@@ -1,16 +1,32 @@
+use bevy::prelude::*;
+
 pub mod game;
 pub mod intro;
 pub mod main_menu;
 
-use crate::common::SceneRef;
-use legion::{Resources, World, Schedule};
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum UnScene {
+    Intro,
+    MainMenu,
+    Game,
+    Exit,
+}
 
-pub fn load_scene(world: &mut World, resources: &mut Resources, scene: SceneRef) -> Option<Schedule> {
-    let SceneRef(scene) = scene;
-    Some(match scene {
-        "intro" => intro::Intro::init(world, resources),
-        "main_menu" => main_menu::MainMenu::init(world, resources),
-        "game" => game::GameScene::init(world, resources),
-        _ => return None,
-    })
+pub struct LoadGameScenes;
+
+impl Plugin for LoadGameScenes {
+    fn build(&self, app: &mut AppBuilder) {
+        app.add_state(UnScene::Intro)
+            .add_plugin(intro::Intro)
+            .add_plugin(main_menu::MainMenu)
+            .add_plugin(game::GameScene)
+            .add_system_set(
+                SystemSet::on_enter(UnScene::Exit).with_system(death_of_it_all.system()),
+            )
+    }
+}
+
+fn death_of_it_all() {
+    println!("All good, all ok, this is graceful shutdown now...");
+    std::process::exit(0);
 }
