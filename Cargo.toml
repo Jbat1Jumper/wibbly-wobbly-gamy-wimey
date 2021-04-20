@@ -7,13 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ggez = "0.5"
-glam = { version = "0.12", features=["mint"] }
-pyxel = { version = "0.2", features=["images"] }
-legion = "0.4"
-image = "0.22"
-rapier2d = { version = "0.6", features=["simd-stable"] }
+bevy = "0.5"
 crossbeam-channel = "0.5"
+image = "0.22"
+pyxel = { version = "0.2", features=["images"] }
+rapier2d = { version = "0.8", features=["simd-stable"] }
 regex = "1"
 
 [patch.crates-io]
