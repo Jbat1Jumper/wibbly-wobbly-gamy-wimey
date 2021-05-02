@@ -1,8 +1,8 @@
 use super::room_gen::model::{RoomBlueprint, Tile};
 use crate::common::*;
-use glam::f32::*;
-use legion::*;
-use legion::systems::CommandBuffer;
+use crate::pyxel_plugin::PyxelTile;
+use bevy::prelude::*;
+use heron::prelude::*;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,15 +15,20 @@ pub enum TileConstrain {
     Solid,
 }
 
-impl TileConstrain
-{
+impl TileConstrain {
     pub fn satisfies(&self, tile: Tile) -> bool {
         match self {
             TileConstrain::X => true,
             TileConstrain::Empty => tile == Tile::Empty,
             TileConstrain::Ground => tile == Tile::Ground,
             TileConstrain::Wall => tile == Tile::Wall,
-            TileConstrain::Door => if let Tile::Door(_) = tile { true } else { false },
+            TileConstrain::Door => {
+                if let Tile::Door(_) = tile {
+                    true
+                } else {
+                    false
+                }
+            }
             TileConstrain::Solid => match tile {
                 Tile::Door(_) | Tile::Wall => true,
                 _ => false,
@@ -40,14 +45,6 @@ pub struct Tileset {
     pub tile_height: usize,
 }
 
-impl Tileset {
-    fn reference(&self) -> TilesetRef {
-        TilesetRef {
-            pyxel_file: self.pyxel_file,
-        }
-    }
-}
-
 pub struct AnimatedTile {
     pub name: &'static str,
     /// Indicates that any tile that matches a frame should be animated
@@ -59,11 +56,11 @@ fn get_tile_components(
     pos: (i32, i32),
     blueprint: &RoomBlueprint,
     tileset: &Tileset,
-) -> Option<(Tile, TileRef, SpriteTransform, Position)> {
+) -> Option<(Tile, PyxelTile, Transform)> {
     let nh = blueprint.tile_neighborhood(pos);
 
     for flipped in &[false, true] {
-        for rotation in &Rotation::all() {
+        for rotation in &Rot::all() {
             for (id, constrains) in tileset.tile_constrains.iter() {
                 let constrains = if *flipped {
                     constrains.clone().flip_horizontally()
@@ -79,15 +76,16 @@ fn get_tile_components(
                 if fits {
                     return Some((
                         blueprint.tile_at(pos),
-                        TileRef(*id, tileset.reference()),
-                        SpriteTransform {
-                            rotation: *rotation,
-                            flipped: *flipped,
+                        PyxelTile(*id, tileset.pyxel_file),
+                        Transform {
+                            translation: Vec3::new(
+                                pos.0 as f32 * tileset.tile_width as f32,
+                                pos.1 as f32 * tileset.tile_height as f32,
+                                0.,
+                            ),
+                            rotation: (*rotation).into(),
+                            scale: Vec3::new(if *flipped { 1. } else { 0. }, 1., 1.),
                         },
-                        Position(Vec2::new(
-                            pos.0 as f32 * tileset.tile_width as f32,
-                            pos.1 as f32 * tileset.tile_height as f32,
-                        )),
                     ));
                 }
             }
@@ -96,30 +94,37 @@ fn get_tile_components(
     None
 }
 
-pub fn create(blueprint: &RoomBlueprint, cmd: &mut CommandBuffer, tileset: &Tileset) {
+pub fn create(blueprint: &RoomBlueprint, cmd: &mut Commands, tileset: &Tileset) {
     let tile_components = blueprint
         .positions()
         .into_iter()
         .filter_map(|pos| get_tile_components(pos, &blueprint, tileset));
 
-    let (need_collider, without_collider): (Vec<_>, Vec<_>) = tile_components.partition(|c| match c.0 {
-        Tile::Wall | Tile::Door(_) => true,
-        _ => false,
-    });
+    let (need_collider, without_collider): (Vec<_>, Vec<_>) =
+        tile_components.partition(|c| match c.0 {
+            Tile::Wall | Tile::Door(_) => true,
+            _ => false,
+        });
 
-    let with_collider: Vec<_> = need_collider.into_iter().map(|(tile, tr, st, pos)| {
-        use crate::physics::*;
-        let rb = RigidBody2D::new(
-            Shape::AABB(
-                tileset.tile_width as f32 / 2.0,
-                tileset.tile_height as f32 / 2.0,
-            ),
-            true,
-        );
+    let with_collider: Vec<_> = need_collider
+        .into_iter()
+        .map(|(tile, pyxel_tile, transform)| {
+            (
+                tile,
+                pyxel_tile,
+                transform,
+                Body::Cuboid {
+                    half_extends: Vec3::new(
+                        tileset.tile_width as f32 / 2.0,
+                        tileset.tile_height as f32 / 2.0,
+                        1.,
+                    ),
+                },
+                BodyType::Static,
+            )
+        })
+        .collect();
 
-        (tile, tr, st, pos, rb)
-    }).collect();
-
-    cmd.extend(without_collider);
-    cmd.extend(with_collider);
+    cmd.spawn_batch(without_collider);
+    cmd.spawn_batch(with_collider);
 }

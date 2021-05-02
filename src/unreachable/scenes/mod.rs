@@ -22,7 +22,7 @@ impl Plugin for LoadGameScenes {
             .add_plugin(game::GameScene)
             .add_system_set(
                 SystemSet::on_enter(UnScene::Exit).with_system(death_of_it_all.system()),
-            )
+            );
     }
 }
 

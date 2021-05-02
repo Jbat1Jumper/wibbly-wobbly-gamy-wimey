@@ -8,10 +8,9 @@ edition = "2018"
 
 [dependencies]
 bevy = "0.5"
-crossbeam-channel = "0.5"
+heron = { version = "0.5", default-features = false, features=["2d"] }
 image = "0.22"
 pyxel = { version = "0.2", features=["images"] }
-rapier2d = { version = "0.8", features=["simd-stable"] }
 regex = "1"
 
 [patch.crates-io]

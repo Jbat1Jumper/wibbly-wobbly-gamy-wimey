@@ -1,19 +1,19 @@
-use glam::f32::*;
+use bevy::input::keyboard::KeyboardInput;
+use bevy::prelude::*;
+use heron::prelude::*;
+use std::collections::HashMap;
+use crate::pyxel_plugin::PyxelSprite;
+use crate::unreachable::scenes::UnScene;
 
-use std::time::Duration;
-
-use std::collections::{HashMap, HashSet};
-
-use legion::systems::CommandBuffer;
-use legion::*;
-
-#[macro_use]
 use crate::common::*;
-use crate::physics::*;
 
+pub mod dungeon_definition;
 mod level_gen;
 mod room_blueprint_to_world;
 mod room_gen;
+
+use dungeon_definition::DungeonDefinition;
+use room_gen::model::Tile;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ChabonKind {
@@ -23,7 +23,7 @@ enum ChabonKind {
 
 #[derive(Clone, Debug, Default)]
 struct JoystickControlledVehicle {
-    input_map: HashMap<Button, ButtonState>,
+    input_map: HashMap<Dir, bool>,
 }
 
 impl JoystickControlledVehicle {
@@ -32,13 +32,12 @@ impl JoystickControlledVehicle {
 
         for (b, bs) in self.input_map.iter() {
             let direction = match b {
-                Button::Down => vec2_down(),
-                Button::Up => vec2_up(),
-                Button::Left => vec2_left(),
-                Button::Right => vec2_right(),
-                _ => Vec2::new(0.0, 0.0),
+                Dir::Down => vec2_down(),
+                Dir::Up => vec2_up(),
+                Dir::Left => vec2_left(),
+                Dir::Right => vec2_right(),
             };
-            if *bs == ButtonState::Pressed {
+            if *bs {
                 stick += direction;
             }
         }
@@ -47,27 +46,30 @@ impl JoystickControlledVehicle {
     }
 }
 
-fn prototype_player(cmd: &mut CommandBuffer) -> Entity {
-    cmd.push((
+fn prototype_player(commands: &mut Commands) {
+    commands.spawn_bundle((
         ChabonKind::Player,
-        Position(Vec2::new(30.0, 30.0)),
+        Transform {
+            translation: Vec3::new(30., 30., 0.),
+            ..Default::default()
+        },
         Vehicle::default(),
         JoystickControlledVehicle::default(),
-        Sprite {
+        PyxelSprite {
             pyxel_file: "base.pyxel",
             current_animation: "idle".into(),
             current_animation_time: 0.0,
         },
-        SpriteTransform::default(),
-        RigidBody2D::new(Shape::Circle(3.0), false),
-    ))
+        Body::Sphere { radius: 3. },
+        BodyType::Dynamic,
+    ));
 }
 
 #[rustfmt::skip]
-fn initialize_base_tileset(resources: &mut Resources) {
+fn base_tileset() -> room_blueprint_to_world::Tileset {
     use room_blueprint_to_world::{AnimatedTile, TileConstrain::*, Tileset};
 
-    let tileset = Tileset {
+    Tileset {
         pyxel_file: "base.pyxel",
         tile_width: 16,
         tile_height: 16,
@@ -115,265 +117,169 @@ fn initialize_base_tileset(resources: &mut Resources) {
                 frames: vec![12, 13, 15],
             },
         ],
-    };
-
-    resources.insert(tileset);
-}
-
-enum RoomInput {
-    Frame(Duration),
-    Button(Button, ButtonState),
-    PlayerEnters(Direction),
-}
-
-enum RoomCommand {
-    PlayerExits(Direction),
-    PlayerDied,
+    }
 }
 
 ////////////////////////////////////////////////////////////////////
 // GAME SCENE
 ////////////////////////////////////////////////////////////////////
 
-pub struct GameScene {}
+pub struct GameScene;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CurrentRoom(pub &'static str);
+#[derive(Clone, Debug)]
+pub struct GameState {
+    current_room: &'static str,
+    load_room: bool,
+    lvl_gen: level_gen::State<DungeonDefinition>,
+    // last_door_used: usize,
+}
 
-impl GameScene {
-    pub fn init(world: &mut World, resources: &mut Resources) -> Schedule {
-        println!("Init game scene");
-        let font = Font::LiberationMono;
-
-        initialize_base_tileset(resources);
-        let cmds: Vec<RoomCommand> = vec![];
-        resources.insert(cmds);
-        resources.insert(GameSceneState::Initial);
-        resources.insert(CurrentRoom("S"));
-        resources.insert(LoadRoom(true));
-
-        let dd = dungeon_definition::lvl_1();
-        let lvl_gen_state = level_gen::State::new(dd);
-        resources.insert(lvl_gen_state);
-
-        let contact_events: Receiver<ContactEvent> =
-            (*resources.get::<Receiver<ContactEvent>>().unwrap()).clone();
-
-        println!("Returning schedule");
-        Schedule::builder()
-            .add_system(create_gizmos_system())
-            .add_system(update_game_scene_system())
-            .add_system(update_state_transitions_system())
-            .add_system(update_chabon_sprites_system())
-            .add_system(handle_door_contact_system(contact_events))
-            .add_system(update_sprites_system_that_should_be_in_common_mod_system())
-            .add_system(update_room_system())
-            .add_system(move_vehicles_system())
-            .add_system(update_joystick_controlled_vehicles_system())
-            .add_system(load_room_system())
-            .build()
+impl Plugin for GameScene {
+    fn build(&self, application: &mut AppBuilder) {
+        application
+            .insert_resource(base_tileset())
+            .insert_resource(GameState {
+                current_room: "S",
+                load_room: true,
+                lvl_gen: level_gen::State::new(dungeon_definition::lvl_1()),
+            })
+            .add_system_set(SystemSet::on_enter(UnScene::Game).with_system(enter.system()))
+            .add_system_set(
+                SystemSet::on_update(UnScene::Game)
+                    .with_system(update_game_scene.system())
+                    .with_system(update_chabon_sprites.system())
+                    .with_system(handle_door_contact.system())
+                    .with_system(update_joystick_controlled_vehicles.system())
+                    .with_system(load_room.system()),
+            )
+            .add_physics_system(move_vehicles.system())
+            .add_system_set(SystemSet::on_exit(UnScene::Game).with_system(exit.system()));
     }
 }
+
+fn enter() {}
+
+fn exit() {}
 
 ////////////////////////////////////////////////////////////////////
 // SYSTEMS
 ////////////////////////////////////////////////////////////////////
 
-enum GameSceneState {
-    Initial,
-    EnteringRoom,
-    Play,
-    ExitingRoom,
-}
-
-impl Default for GameSceneState {
-    fn default() -> Self {
-        GameSceneState::Initial
+fn update_game_scene(keyboard: Res<Input<KeyCode>>, mut scene: ResMut<State<UnScene>>) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        scene.set(UnScene::Exit).expect("Failed to set UnScene::Exit");
     }
 }
 
-#[system]
-fn update_state_transitions(#[resource] state: &mut GameSceneState) {
-    use GameSceneState::*;
-    // let state = resources.get_or_default::<GameSceneState>();
-    match *state {
-        Initial => {
-            *state = EnteringRoom;
-        }
-        EnteringRoom => {
-            *state = Play;
-        }
-        Play => {}
-        ExitingRoom => {
-            *state = EnteringRoom;
-        }
-    }
-}
+fn update_chabon_sprites(mut query: Query<(&ChabonKind, &Vehicle, &mut PyxelSprite)>, _time: Res<Time>) {
+    for (_chabon, vehicle, mut sprite) in query.iter_mut() {
+        let dir = vec![
+            ("left", vec2_left()),
+            ("right", vec2_right()),
+            ("up", vec2_up()),
+            ("down", vec2_down()),
+        ]
+        .into_iter()
+        .map(|(name, target_dir)| (name, target_dir.distance(vehicle.direction)))
+        .min_by_key(|(_name, distance)| (distance * 100.0) as i32)
+        .unwrap()
+        .0;
 
-#[system]
-fn update_game_scene(
-    #[resource] cmd: &mut Vec<SceneCommand>,
-    #[resource] input: &Vec<(Button, ButtonState)>,
-) {
-    for (button, _state) in input.iter() {
-        match button {
-            Button::Start => cmd.push(SceneCommand::Exit),
-            _ => (),
+        let state = if vehicle.speed > 0.01 {
+            "walk"
+        } else {
+            "idle"
+        };
+
+        let new_animation = format!("{}_{}", dir, state);
+        if sprite.current_animation != new_animation {
+            sprite.current_animation = new_animation;
+            sprite.current_animation_time = 0.0;
         }
     }
 }
 
-#[system(for_each)]
-fn update_chabon_sprites(
-    chabon: &ChabonKind,
-    vehicle: &Vehicle,
-    sprite: &mut Sprite,
-    #[resource] LastFrameDuration(duration): &LastFrameDuration,
-    #[resource] CurrentFrame(frame): &CurrentFrame,
-) {
-    let dir = vec![
-        ("left", vec2_left()),
-        ("right", vec2_right()),
-        ("up", vec2_up()),
-        ("down", vec2_down()),
-    ]
-    .into_iter()
-    .map(|(name, target_dir)| (name, target_dir.distance(vehicle.direction)))
-    .min_by_key(|(_name, distance)| (distance * 100.0) as i32)
-    .unwrap()
-    .0;
-
-    let state = if vehicle.force.length_squared() > 0.01 {
-        "walk"
-    } else {
-        "idle"
-    };
-
-    let new_animation = format!("{}_{}", dir, state);
-    if sprite.current_animation != new_animation {
-        sprite.current_animation = new_animation;
-        sprite.current_animation_time = 0.0;
-    }
-}
-
-
-use crate::physics::ContactEvent;
-use crossbeam_channel::Receiver;
-use legion::world::SubWorld;
-pub mod dungeon_definition;
-
-use dungeon_definition::DungeonDefinition;
-
-struct LoadRoom(bool);
-struct LastDoorUsed(usize);
-
-#[system]
-#[read_component(room_gen::model::Tile)]
-#[read_component(ChabonKind)]
 fn load_room(
-    world: &SubWorld,
-    cmd: &mut CommandBuffer,
-    #[resource] tileset: &room_blueprint_to_world::Tileset,
-    #[resource] load_room: &mut LoadRoom,
-    #[resource] lvl_gen_state: &mut level_gen::State<DungeonDefinition>,
+    mut commands: Commands,
+    query: Query<Entity, Or<(With<ChabonKind>, With<Tile>)>>,
+    tileset: Res<room_blueprint_to_world::Tileset>,
+    mut state: ResMut<GameState>,
 ) {
-    if let LoadRoom(true) = load_room {
+    if state.load_room {
         // Delete old room entities
-        let mut query = <(Entity, &ChabonKind)>::query();
-        for (entity, _) in query.iter(world) {
-            cmd.remove(*entity);
-        }
-        let mut query = <(Entity, &room_gen::model::Tile)>::query();
-        for (entity, _) in query.iter(world) {
-            cmd.remove(*entity);
+        for entity in query.iter() {
+            commands.entity(entity).despawn();
         }
 
         // Create new room
         use room_gen::model::RoomGenerator;
-        let bp = lvl_gen_state.definition.create(lvl_gen_state.current_room);
-        room_blueprint_to_world::create(&bp, cmd, tileset);
-        prototype_player(cmd);
+        let bp = state.lvl_gen.definition.create(state.lvl_gen.current_room);
+        room_blueprint_to_world::create(&bp, &mut commands, &tileset);
+        prototype_player(&mut commands);
 
-        *load_room = LoadRoom(false);
+        state.load_room = false;
     }
 }
 
-use room_gen::model::Tile;
-// PLS TODO: Refactor this, it looks really dirty
-#[system]
-#[read_component(room_gen::model::Tile)]
-#[read_component(ChabonKind)]
 fn handle_door_contact(
-    world: &SubWorld,
-    #[state] contact_events: &Receiver<ContactEvent>,
-    #[resource] current_room: &mut CurrentRoom,
-    #[resource] load_room: &mut LoadRoom,
-    #[resource] lvl_gen_state: &mut level_gen::State<DungeonDefinition>,
+    mut contact_events: EventReader<CollisionEvent>,
+    query_tiles: Query<&Tile>,
+    query_chabon: Query<&ChabonKind>,
+    mut state: ResMut<GameState>,
 ) {
-    for e in contact_events.try_iter() {
+    for e in contact_events.iter() {
         match e {
-            ContactEvent::Started(this, that) => {
-                if let Some(ChabonKind::Player) = world.try_get_cloned(this) {
-                    if let Some(Tile::Door(dn)) = world.try_get_cloned(that) {
-                        println!("Before {:?}", current_room);
+            CollisionEvent::Started(x, y) => for (this, that) in &[(*x, *y), (*y, *x)] {
+                if let Ok(ChabonKind::Player) = query_chabon.get(*this) {
+                    if let Ok(Tile::Door(dn)) = query_tiles.get(*that) {
+                        println!("Before {:?}", state.current_room);
                         println!("Going through door!");
-                        let res = lvl_gen_state.step(dn);
-                        *current_room = CurrentRoom(lvl_gen_state.current_room);
+                        let res = state.lvl_gen.step(*dn);
+                        state.current_room = state.lvl_gen.current_room;
                         println!("Result {:?}", res);
-                        println!("After {:?}", current_room);
-                        // println!("State {:#?}", lvl_gen_state);
-                        *load_room = LoadRoom(true);
+                        println!("After {:?}", state.current_room);
+                        // println!("State {:#?}", state.lvl_gen);
+                        state.load_room = true;
                     }
                 }
             }
             _ => {}
         }
     }
-    // TODO: Do something
 }
 
-
-#[system]
-fn update_room(#[resource] command_buffer: &Vec<RoomCommand>) {
-    // TODO: Do something
-}
-
-#[system(for_each)]
-fn move_vehicles(
-    position: &mut Position,
-    vehicle: &mut Vehicle,
-    rigidbody: Option<&RigidBody2D>,
-    #[resource] LastFrameDuration(duration): &LastFrameDuration,
-    #[resource] PhysicsResources { bodies, .. }: &mut PhysicsResources,
-) {
-    if vehicle.force.length_squared() > 0.01 {
-        let new_p = position.0 + vehicle.force * duration.as_secs_f32();
-        if let Some(rigidbody) = rigidbody {
-            if let Some((rbh, _ch)) = rigidbody.handles {
-                let rb = bodies
-                    .get_mut(rbh)
-                    .expect("RigidBody not found for handle moving vehicles");
-                let f =
-                    rapier2d::na::Vector2::new(vehicle.force.x * 100.0, vehicle.force.y * 100.0);
-                rb.apply_force(f, true);
-            }
+fn move_vehicles(mut query: Query<(&Vehicle, &mut Velocity)>, _time: Res<Time>) {
+    for (vehicle, mut velocity) in query.iter_mut() {
+        if vehicle.speed > 0.01 {
+            velocity.linear = (vehicle.speed * vehicle.direction).extend(0.);
         } else {
-            position.0 = new_p;
+            // TODO: Try turn this on and off to see linear damping
+            velocity.linear = Vec3::ZERO;
         }
-        vehicle.direction = vehicle.force.normalize();
     }
-    vehicle.force = Vec2::new(0.0, 0.0);
 }
 
-#[system(for_each)]
 fn update_joystick_controlled_vehicles(
-    controller: &mut JoystickControlledVehicle,
-    vehicle: &mut Vehicle,
-    #[resource] input: &Vec<(Button, ButtonState)>,
+    mut query: Query<(&mut Vehicle, &mut JoystickControlledVehicle)>,
+    mut keyboard_events: EventReader<KeyboardInput>,
 ) {
-    for (b, bs) in input.iter() {
-        controller.input_map.insert(*b, *bs);
+    for (mut vehicle, mut controller) in query.iter_mut() {
+        for e in keyboard_events.iter() {
+            if let Some(dir) = e.key_code.map(keycode_to_dir).flatten() {
+                controller.input_map.insert(dir, e.state.is_pressed());
+            }
+        }
+        vehicle.direction = controller.stick().normalize();
+        vehicle.speed = controller.stick().length();
     }
+}
 
-    vehicle.force += controller.stick() * vehicle.speed;
+fn keycode_to_dir(kc: KeyCode) -> Option<Dir> {
+    Some(match kc {
+        KeyCode::A => Dir::Left,
+        KeyCode::S => Dir::Down,
+        KeyCode::D => Dir::Right,
+        KeyCode::W => Dir::Up,
+        _ => return None,
+    })
 }

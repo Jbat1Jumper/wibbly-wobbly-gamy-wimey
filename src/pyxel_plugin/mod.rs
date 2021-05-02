@@ -1,18 +1,11 @@
-use crate::common::*;
 use bevy::prelude::*;
-use core::ops::Deref;
-use pyxel::Pyxel;
 use resources::*;
 use sprite_sheet::*;
 
 mod resources;
 mod sprite_sheet;
 
-pub struct PyxelPlugin {
-    text_resources: TextResources,
-    sprite_resources: SpriteResources,
-    frames: usize,
-}
+pub struct PyxelPlugin;
 
 impl Plugin for PyxelPlugin {
     fn build(&self, app_builder: &mut AppBuilder) {
@@ -24,11 +17,11 @@ impl Plugin for PyxelPlugin {
                 "base.pyxel" => {
                     //pyxel::open("resources/base.pyxel")
                     pyxel::load_from_memory(
-                        include_bytes!("resources/base.pyxel")
+                        include_bytes!("../unreachable/resources/base.pyxel")
                     )
                     .expect("Problems loading base.pyxel")
                 }
-            }))
+            }));
     }
 }
 
@@ -45,8 +38,8 @@ pub struct PyxelSprite {
 
 
 fn create_sprites_for_sprites(
-    commands: Commands,
-    query: Query<(&PyxelSprite, &Transform), (Without<Sprite>)>,
+    mut commands: Commands,
+    query: Query<(&PyxelSprite, &Transform), Without<Sprite>>,
     mut pyxel: ResMut<PyxelResources>,
     mut textures: ResMut<Assets<Texture>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -61,12 +54,14 @@ fn create_sprites_for_sprites(
         let material = pyxel.get_sprite_frame_material(
             current_animation,
             *current_animation_time,
-            layer,
+            &"main".into(),
             pyxel_file,
+            &mut textures,
+            &mut materials,
         );
 
         commands.spawn_bundle(SpriteBundle {
-            tranform: transform.clone(),
+            transform: transform.clone(),
             material,
             ..Default::default()
         });
@@ -74,31 +69,33 @@ fn create_sprites_for_sprites(
 }
 
 fn animate_sprites(
-    query: Query<(&mut PyxelSprite, &mut Handle<ColorMaterial>)>,
-    mut time: Res<Time>,
+    mut query: Query<(&mut PyxelSprite, &mut Handle<ColorMaterial>)>,
+    time: Res<Time>,
     mut pyxel: ResMut<PyxelResources>,
     mut textures: ResMut<Assets<Texture>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let delta = time.delta_seconds_f64();
 
-    for (sprite, material) in query.iter() {
-        let file = pyxel_files.get(&sprite.pyxel_file).unwrap();
-        let duration = sprite_sheet.get_animation_duration(&sprite.current_animation).unwrap();
+    for (mut sprite, mut material) in query.iter_mut() {
+        let file = pyxel.pyxel_files.get(&sprite.pyxel_file).unwrap();
+        let duration = file.get_animation_duration(&sprite.current_animation).unwrap();
         sprite.current_animation_time = (sprite.current_animation_time + delta) % duration;
 
-        material = pyxel.get_sprite_frame_material(
-            current_animation,
-            *current_animation_time,
-            layer,
-            pyxel_file,
+        *material = pyxel.get_sprite_frame_material(
+            &sprite.current_animation,
+            sprite.current_animation_time,
+            &"main".into(),
+            sprite.pyxel_file,
+            &mut textures,
+            &mut materials,
         );
     }
 }
 
 fn create_sprites_for_tiles(
-    commands: Commands,
-    query: Query<(&TileRef, &Transform), (Without<Sprite>)>,
+    mut commands: Commands,
+    query: Query<(&PyxelTile, &Transform), Without<Sprite>>,
     mut pyxel: ResMut<PyxelResources>,
     mut textures: ResMut<Assets<Texture>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -106,7 +103,7 @@ fn create_sprites_for_tiles(
     for (tile, transform) in query.iter() {
         let material = pyxel.get_tile_material(tile, &mut textures, &mut materials);
         commands.spawn_bundle(SpriteBundle {
-            tranform: transform.clone(),
+            transform: transform.clone(),
             material,
             ..Default::default()
         });

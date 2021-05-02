@@ -1,26 +1,24 @@
-use std::collections::HashMap;
 use bevy::prelude::*;
-
 pub use glam_ext::*;
+pub use known_fonts::*;
+pub mod known_fonts;
 
 pub mod glam_ext {
-    use glam::f32::*;
+    use bevy::prelude::*;
     pub fn vec2_left() -> Vec2 {
-        vec2(-1.0, 0.0)
+        Vec2::new(-1.0, 0.0)
     }
     pub fn vec2_right() -> Vec2 {
-        vec2(1.0, 0.0)
+        Vec2::new(1.0, 0.0)
     }
     pub fn vec2_up() -> Vec2 {
-        vec2(0.0, -1.0)
+        Vec2::new(0.0, -1.0)
     }
     pub fn vec2_down() -> Vec2 {
-        vec2(0.0, 1.0)
+        Vec2::new(0.0, 1.0)
     }
 }
 
-
-pub use Constrain::*;
 pub use Dir::*;
 pub use Rot::*;
 
@@ -36,18 +34,12 @@ macro_rules! map(
      };
 );
 
-pub fn create_gizmos(
-    commands:Commands,
-    query: Query<(Entity, Transform)>,
-) {
+pub fn create_gizmos(commands: Commands, query: Query<(Entity, &Transform)>) {
     panic!("Not implemented, see bevy_lyon/bevy_prototype_lyon");
 }
 
-
-
 #[derive(Clone, Copy, Debug)]
 pub struct Vehicle {
-    pub force: Vec2,
     pub direction: Vec2,
     pub speed: f32,
     // direction: f64,
@@ -57,7 +49,6 @@ pub struct Vehicle {
 impl Default for Vehicle {
     fn default() -> Self {
         Vehicle {
-            force: Vec2::new(0.0, 0.0),
             direction: Vec2::new(1.0, 0.0),
             speed: 100.0,
         }
@@ -99,6 +90,12 @@ impl Rot {
             Deg180 => PI,
             Deg270 => 1.5 * PI,
         }
+    }
+}
+
+impl Into<Quat> for Rot {
+    fn into(self) -> Quat {
+        Quat::from_rotation_z(self.radians())
     }
 }
 
@@ -150,7 +147,6 @@ where
         ]
     }
 }
-
 
 pub trait GridWalkable {
     fn step(&self, direction: Dir) -> Self;

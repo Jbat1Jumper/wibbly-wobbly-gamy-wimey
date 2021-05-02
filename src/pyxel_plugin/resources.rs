@@ -1,21 +1,30 @@
-use bevy::prelude::*;
-use pyxel::Pyxel;
-use std::collections::HashMap;
 use super::*;
+use bevy::render::texture::*;
+use std::collections::HashMap;
 
 pub struct PyxelResources {
     pub pyxel_files: HashMap<&'static str, pyxel::Pyxel>,
-    pub loaded_tiles: HashMap<PyxelTile, Handle<Material>>,
-    pub loaded_frames: HashMap<(LayerId, FrameId, &'static str), Handle<Material>>,
+    pub loaded_tiles: HashMap<PyxelTile, Handle<ColorMaterial>>,
+    pub loaded_frames: HashMap<(LayerId, FrameId, &'static str), Handle<ColorMaterial>>,
 }
 
 impl PyxelResources {
-    fn get_sprite_frame_material{
+    pub fn new(pyxel_files: HashMap<&'static str, pyxel::Pyxel>) -> Self {
+        Self {
+            pyxel_files,
+            loaded_tiles: HashMap::new(),
+            loaded_frames: HashMap::new(),
+        }
+    }
+
+    pub fn get_sprite_frame_material(
         &mut self,
         current_animation: &AnimationId,
         current_animation_time: f64,
         layer: &LayerId,
         pyxel_file: &'static str,
+        textures: &mut Assets<Texture>,
+        materials: &mut Assets<ColorMaterial>,
     ) -> Handle<ColorMaterial> {
         let file = self.pyxel_files.get(pyxel_file).unwrap();
 
@@ -29,10 +38,13 @@ impl PyxelResources {
         {
             let data = file
                 .get_frame_data_in_rgba8(&frame, layer)
-                .map_err(ggez::error::GameError::ResourceLoadError)?;
-
+                .expect("Resource load error");
             let texture = Texture::new_fill(
-                Extent3d::new(file.tileset().tile_width(), file.tileset().tile_height(), 0),
+                Extent3d::new(
+                    file.tileset().tile_width() as u32,
+                    file.tileset().tile_height() as u32,
+                    0,
+                ),
                 TextureDimension::D2,
                 &data,
                 TextureFormat::Rgba8Uint,
@@ -45,24 +57,24 @@ impl PyxelResources {
                 .insert((layer.clone(), frame, pyxel_file), material_handle);
         }
 
-        self
-            .loaded_frames
+        self.loaded_frames
             .get(&(layer.clone(), frame, pyxel_file))
             .unwrap()
+            .clone()
     }
 
-    fn get_tile_material(
+    pub fn get_tile_material(
         &mut self,
         tile: &PyxelTile,
         textures: &mut Assets<Texture>,
         materials: &mut Assets<ColorMaterial>,
     ) -> Handle<ColorMaterial> {
         if !self.loaded_tiles.contains_key(tile) {
-            self.loaded_tiles
-                .insert(tile, self._load_tile_material(tile, textures, materials));
+            let material = self._load_tile_material(tile, textures, materials);
+            self.loaded_tiles.insert(*tile, material);
         }
 
-        self.loaded_tiles.get(tile).unwrap()
+        self.loaded_tiles.get(tile).unwrap().clone()
     }
 
     fn _load_tile_material(
@@ -71,8 +83,8 @@ impl PyxelResources {
         textures: &mut Assets<Texture>,
         materials: &mut Assets<ColorMaterial>,
     ) -> Handle<ColorMaterial> {
-        let file = self.pyxel_files.get(pyxel_file).unwrap();
-        let data: Vec<u8> = file.tileset().images()[index]
+        let file = self.pyxel_files.get(tile.1).unwrap();
+        let data: Vec<u8> = file.tileset().images()[tile.0]
             .to_rgba()
             .pixels()
             .map(|p| &p.0)
@@ -81,7 +93,11 @@ impl PyxelResources {
             .collect();
 
         let texture = Texture::new_fill(
-            Extent3d::new(file.tileset().tile_width(), file.tileset().tile_height(), 0),
+            Extent3d::new(
+                file.tileset().tile_width() as u32,
+                file.tileset().tile_height() as u32,
+                0,
+            ),
             TextureDimension::D2,
             &data,
             TextureFormat::Rgba8Uint,

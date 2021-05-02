@@ -1,8 +1,7 @@
-use bevy::prelude::*;
-use crate::common::*;
-use glam::f32::Vec2;
-use std::time::Duration;
 use super::UnScene;
+use crate::common::*;
+use bevy::prelude::*;
+use std::time::Duration;
 
 pub struct Intro;
 
@@ -11,6 +10,9 @@ impl Plugin for Intro {
         app.add_system_set(SystemSet::on_enter(UnScene::Intro).with_system(enter.system()))
             .add_system_set(SystemSet::on_update(UnScene::Intro).with_system(update.system()))
             .add_system_set(SystemSet::on_exit(UnScene::Intro).with_system(exit.system()))
+            .insert_resource(IntroState {
+                remaining_time: Duration::from_secs(1),
+            });
     }
 }
 
@@ -18,24 +20,18 @@ struct IntroState {
     remaining_time: Duration,
 }
 
-fn enter(mut commands: Commands) {
-    let font = Font::LiberationMono;
+fn enter(mut commands: Commands, kf: Res<KnownFonts>) {
     commands
         .spawn()
-        .insert_bundle((Text::new("SOGA", font, 12), Position(Vec2::new(20.0, 20.0))))
-        .insert_resource(IntroState {
+        .insert_bundle(kf.create_text("SOGA", (20., 20.), KnownFont::LiberationMono, 20.))
+        .insert(IntroState {
             remaining_time: Duration::from_secs(1),
         });
 }
 
-fn update(
-    lfd: Res<LastFrameDuration>,
-    mut intro: ResMut<IntroState>,
-    mut scene: ResMut<Sate<UnScene>>,
-) {
-    let LastFrameDuration(delta) = lfd;
-    if *intro.remaining_time > *delta {
-        *intro.remaining_time -= *delta;
+fn update(time: Res<Time>, mut intro: ResMut<IntroState>, mut scene: ResMut<State<UnScene>>) {
+    if intro.remaining_time > time.delta() {
+        intro.remaining_time -= time.delta();
     } else {
         scene.set(UnScene::MainMenu).unwrap();
     }
