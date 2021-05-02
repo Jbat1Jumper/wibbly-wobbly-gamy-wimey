@@ -47,7 +47,7 @@ impl PyxelResources {
                 ),
                 TextureDimension::D2,
                 &data,
-                TextureFormat::Rgba8Uint,
+                TextureFormat::Rgba8UnormSrgb,
             );
 
             let texture_handle = textures.add(texture);
@@ -100,7 +100,7 @@ impl PyxelResources {
             ),
             TextureDimension::D2,
             &data,
-            TextureFormat::Rgba8Uint,
+            TextureFormat::Rgba8UnormSrgb,
         );
 
         let texture_handle = textures.add(texture);

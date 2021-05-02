@@ -57,7 +57,7 @@ fn prototype_player(commands: &mut Commands) {
         JoystickControlledVehicle::default(),
         PyxelSprite {
             pyxel_file: "base.pyxel",
-            current_animation: "idle".into(),
+            current_animation: "right_idle".into(),
             current_animation_time: 0.0,
         },
         Body::Sphere { radius: 3. },
