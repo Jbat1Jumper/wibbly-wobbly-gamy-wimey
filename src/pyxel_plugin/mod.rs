@@ -39,12 +39,12 @@ pub struct PyxelSprite {
 
 fn create_sprites_for_sprites(
     mut commands: Commands,
-    query: Query<(&PyxelSprite, &Transform), Without<Sprite>>,
+    query: Query<(Entity, &PyxelSprite, &Transform), Without<Sprite>>,
     mut pyxel: ResMut<PyxelResources>,
     mut textures: ResMut<Assets<Texture>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    for (sprite, transform) in query.iter() {
+    for (entity, sprite, transform) in query.iter() {
         let PyxelSprite {
             pyxel_file,
             current_animation,
@@ -60,7 +60,8 @@ fn create_sprites_for_sprites(
             &mut materials,
         );
 
-        commands.spawn_bundle(SpriteBundle {
+
+        commands.entity(entity).insert_bundle(SpriteBundle {
             transform: transform.clone(),
             material,
             ..Default::default()
@@ -95,14 +96,14 @@ fn animate_sprites(
 
 fn create_sprites_for_tiles(
     mut commands: Commands,
-    query: Query<(&PyxelTile, &Transform), Without<Sprite>>,
+    query: Query<(Entity, &PyxelTile, &Transform), Without<Sprite>>,
     mut pyxel: ResMut<PyxelResources>,
     mut textures: ResMut<Assets<Texture>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    for (tile, transform) in query.iter() {
+    for (entity, tile, transform) in query.iter() {
         let material = pyxel.get_tile_material(tile, &mut textures, &mut materials);
-        commands.spawn_bundle(SpriteBundle {
+        commands.entity(entity).insert_bundle(SpriteBundle {
             transform: transform.clone(),
             material,
             ..Default::default()
