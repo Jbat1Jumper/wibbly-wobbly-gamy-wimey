@@ -43,7 +43,7 @@ impl PyxelResources {
                 Extent3d::new(
                     file.tileset().tile_width() as u32,
                     file.tileset().tile_height() as u32,
-                    0,
+                    1,
                 ),
                 TextureDimension::D2,
                 &data,
@@ -96,7 +96,7 @@ impl PyxelResources {
             Extent3d::new(
                 file.tileset().tile_width() as u32,
                 file.tileset().tile_height() as u32,
-                0,
+                1,
             ),
             TextureDimension::D2,
             &data,
