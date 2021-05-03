@@ -62,12 +62,12 @@ fn get_tile_components(
     for flipped in &[false, true] {
         for rotation in &Rot::all() {
             for (id, constrains) in tileset.tile_constrains.iter() {
+                let constrains = constrains.clone().rotate(rotation);
                 let constrains = if *flipped {
                     constrains.clone().flip_horizontally()
                 } else {
                     constrains.clone()
                 };
-                let constrains = constrains.clone().rotate(rotation);
                 let fits = constrains
                     .iter()
                     .zip(nh.iter())
@@ -84,7 +84,7 @@ fn get_tile_components(
                                 0.,
                             ),
                             rotation: (*rotation).into(),
-                            scale: Vec3::new(if *flipped { 1. } else { 0. }, 1., 1.),
+                            scale: Vec3::new(1., if *flipped { 1. } else { -1. }, 1.),
                         },
                     ));
                 }
