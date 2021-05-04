@@ -12,10 +12,10 @@ pub mod glam_ext {
         Vec2::new(1.0, 0.0)
     }
     pub fn vec2_up() -> Vec2 {
-        Vec2::new(0.0, -1.0)
+        Vec2::new(0.0, 1.0)
     }
     pub fn vec2_down() -> Vec2 {
-        Vec2::new(0.0, 1.0)
+        Vec2::new(0.0, -1.0)
     }
 }
 
@@ -95,7 +95,7 @@ impl Rot {
 
 impl Into<Quat> for Rot {
     fn into(self) -> Quat {
-        Quat::from_rotation_z(self.radians())
+        Quat::from_rotation_z(-self.radians())
     }
 }
 

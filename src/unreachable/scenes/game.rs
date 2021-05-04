@@ -1,9 +1,9 @@
-use bevy::input::keyboard::KeyboardInput;
-use bevy::prelude::*;
-use heron::prelude::*;
-use std::collections::HashMap;
+use crate::plain_simple_physics::*;
 use crate::pyxel_plugin::PyxelSprite;
 use crate::unreachable::scenes::UnScene;
+use bevy::input::keyboard::KeyboardInput;
+use bevy::prelude::*;
+use std::collections::HashMap;
 
 use crate::common::*;
 
@@ -42,15 +42,24 @@ impl JoystickControlledVehicle {
             }
         }
 
-        stick.normalize()
+        stick
     }
 }
 
 fn prototype_player(commands: &mut Commands) {
     commands.spawn_bundle((
+        //    Transform {
+        //        translation: Vec3::new(0., 0., 10.),
+        //        ..Default::default()
+        //    },
+        //    Name::new("Player container"),
+        //))
+        //.with_children(|c| {
+        //    c.spawn_bundle((
         ChabonKind::Player,
+        Name::new("Player"),
         Transform {
-            translation: Vec3::new(30., 30., 0.),
+            translation: Vec3::new(30., -30., 10.),
             ..Default::default()
         },
         Vehicle::default(),
@@ -60,9 +69,12 @@ fn prototype_player(commands: &mut Commands) {
             current_animation: "right_idle".into(),
             current_animation_time: 0.0,
         },
-        Body::Sphere { radius: 3. },
-        BodyType::Dynamic,
+        Collider::AABB(Vec2::new(3., 3.)),
+        RigidBody {
+            velocity: Vec2::ZERO,
+        },
     ));
+    //});
 }
 
 #[rustfmt::skip]
@@ -150,9 +162,10 @@ impl Plugin for GameScene {
                     .with_system(update_chabon_sprites.system())
                     .with_system(handle_door_contact.system())
                     .with_system(update_joystick_controlled_vehicles.system())
+                    .with_system(move_vehicles.system())
+                    .with_system(reset_game.system())
                     .with_system(load_room.system()),
             )
-            .add_physics_system(move_vehicles.system())
             .add_system_set(SystemSet::on_exit(UnScene::Game).with_system(exit.system()));
     }
 }
@@ -167,11 +180,16 @@ fn exit() {}
 
 fn update_game_scene(keyboard: Res<Input<KeyCode>>, mut scene: ResMut<State<UnScene>>) {
     if keyboard.just_pressed(KeyCode::Escape) {
-        scene.set(UnScene::Exit).expect("Failed to set UnScene::Exit");
+        scene
+            .set(UnScene::Exit)
+            .expect("Failed to set UnScene::Exit");
     }
 }
 
-fn update_chabon_sprites(mut query: Query<(&ChabonKind, &Vehicle, &mut PyxelSprite)>, _time: Res<Time>) {
+fn update_chabon_sprites(
+    mut query: Query<(&ChabonKind, &Vehicle, &mut PyxelSprite)>,
+    _time: Res<Time>,
+) {
     for (_chabon, vehicle, mut sprite) in query.iter_mut() {
         let dir = vec![
             ("left", vec2_left()),
@@ -185,16 +203,20 @@ fn update_chabon_sprites(mut query: Query<(&ChabonKind, &Vehicle, &mut PyxelSpri
         .unwrap()
         .0;
 
-        let state = if vehicle.speed > 0.01 {
-            "walk"
-        } else {
-            "idle"
-        };
+        let state = if vehicle.speed > 0.01 { "walk" } else { "idle" };
 
         let new_animation = format!("{}_{}", dir, state);
         if sprite.current_animation != new_animation {
             sprite.current_animation = new_animation;
             sprite.current_animation_time = 0.0;
+        }
+    }
+}
+
+fn reset_game(mut keyboard_events: EventReader<KeyboardInput>, mut state: ResMut<GameState>) {
+    for e in keyboard_events.iter() {
+        if e.state.is_pressed() && e.key_code == Some(KeyCode::R) {
+            state.load_room = true;
         }
     }
 }
@@ -222,23 +244,23 @@ fn load_room(
 }
 
 fn handle_door_contact(
-    mut contact_events: EventReader<CollisionEvent>,
+    mut contact_events: EventReader<ContactEvent>,
     query_tiles: Query<&Tile>,
     query_chabon: Query<&ChabonKind>,
     mut state: ResMut<GameState>,
 ) {
     for e in contact_events.iter() {
         match e {
-            CollisionEvent::Started(x, y) => for (this, that) in &[(*x, *y), (*y, *x)] {
+            ContactEvent::Started(this, that) => {
                 if let Ok(ChabonKind::Player) = query_chabon.get(*this) {
                     if let Ok(Tile::Door(dn)) = query_tiles.get(*that) {
-                        println!("Before {:?}", state.current_room);
-                        println!("Going through door!");
+                        debug!("Before {:?}", state.current_room);
+                        debug!("Going through door!");
                         let res = state.lvl_gen.step(*dn);
                         state.current_room = state.lvl_gen.current_room;
-                        println!("Result {:?}", res);
-                        println!("After {:?}", state.current_room);
-                        // println!("State {:#?}", state.lvl_gen);
+                        debug!("Result {:?}", res);
+                        debug!("After {:?}", state.current_room);
+                        // debug!("State {:#?}", state.lvl_gen);
                         state.load_room = true;
                     }
                 }
@@ -248,15 +270,33 @@ fn handle_door_contact(
     }
 }
 
-fn move_vehicles(mut query: Query<(&Vehicle, &mut Velocity)>, _time: Res<Time>) {
-    for (vehicle, mut velocity) in query.iter_mut() {
-        if vehicle.speed > 0.01 {
-            velocity.linear = (vehicle.speed * vehicle.direction).extend(0.);
-        } else {
-            // TODO: Try turn this on and off to see linear damping
-            velocity.linear = Vec3::ZERO;
+use bevy_egui::{egui, EguiContext};
+
+fn move_vehicles(
+    mut query: Query<(Entity, &Vehicle, &mut RigidBody)>,
+    _time: Res<Time>,
+    egui_context: ResMut<EguiContext>,
+) {
+    egui::Window::new("move_vehicles_system").show(egui_context.ctx(), |ui| {
+        for (entity, vehicle, mut rb) in query.iter_mut() {
+            ui.horizontal(|ui| {
+                ui.label(format!("{:#?}", entity));
+                ui.label(format!("{:#?}", vehicle));
+                ui.label(format!("{:#?}", rb));
+            });
+
+            if vehicle.speed > 0.01 {
+                rb.velocity = Vec2::new(
+                    50. * vehicle.speed * vehicle.direction.x,
+                    50. * vehicle.speed * vehicle.direction.y,
+                )
+                .into();
+            } else {
+                // TODO: Try turn this on and off to see linear damping
+                rb.velocity = Vec2::ZERO.into();
+            }
         }
-    }
+    });
 }
 
 fn update_joystick_controlled_vehicles(
@@ -269,8 +309,10 @@ fn update_joystick_controlled_vehicles(
                 controller.input_map.insert(dir, e.state.is_pressed());
             }
         }
-        vehicle.direction = controller.stick().normalize();
-        vehicle.speed = controller.stick().length();
+        vehicle.speed = controller.stick().length().clamp(0., 1.);
+        if vehicle.speed > 0.01 {
+            vehicle.direction = controller.stick().normalize();
+        }
     }
 }
 

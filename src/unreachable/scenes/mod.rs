@@ -27,6 +27,6 @@ impl Plugin for LoadGameScenes {
 }
 
 fn death_of_it_all() {
-    println!("All good, all ok, this is graceful shutdown now...");
+    info!("All good, all ok, this is graceful shutdown now...");
     std::process::exit(0);
 }
