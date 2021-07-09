@@ -35,42 +35,34 @@ use bevy_egui::{egui, EguiContext, EguiPlugin};
 //
 //
 
-struct Skeleton;
+pub struct PlaydateModelsPlugin;
 
-pub fn main() {
-    App::build()
-        .insert_resource(bevy::log::LogSettings {
-            level: bevy::log::Level::DEBUG,
-            ..Default::default()
-        })
-        .add_plugins(DefaultPlugins)
-        .add_plugin(EguiPlugin)
-        .add_startup_system(on_startup.system())
-        .add_system(editor_ui.system())
-        .insert_resource(ModelDatabase::default())
-        .add_system(ModelDatabase::render_stuff.system())
-        .add_system(ModelEditor::render_editors.system())
-        .run();
+impl Plugin for PlaydateModelsPlugin {
+    fn build(&self, app: &mut AppBuilder) {
+        app
+            // .see("https://github.com/bevyengine/bevy/issues/69")
+            // .require(DefaultPlugins)
+            // .require(EguiPlugin)
+            // .should_be_implemented()
+            .add_startup_system(on_startup.system())
+            .add_system(editor_ui.system())
+            .insert_resource(ModelDatabase::default())
+            .add_system(ModelDatabase::render_stuff.system())
+            .add_system(ModelEditor::render_editors.system());
+    }
 }
 
 fn on_startup(mut commands: Commands, mut model_db: ResMut<ModelDatabase>) {
     model_db.load_from_disk();
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 }
+
 fn editor_ui(
-    mut commands: Commands,
     egui_context: ResMut<EguiContext>,
-    query: Query<Entity>,
-    mut exit: EventWriter<AppExit>,
     mut model_db: ResMut<ModelDatabase>,
 ) {
-    egui::TopPanel::top("menu").show(egui_context.ctx(), |ui| {
+    egui::TopPanel::top("playdate_menu").show(egui_context.ctx(), |ui| {
         egui::menu::bar(ui, |ui| {
-            egui::menu::menu(ui, "File", |ui| {
-                if ui.button("Quit").clicked() {
-                    exit.send(AppExit);
-                }
-            });
             egui::menu::menu(ui, "Models", |ui| {
                 if ui.button("File In").clicked() {
                     model_db.load_from_disk();
