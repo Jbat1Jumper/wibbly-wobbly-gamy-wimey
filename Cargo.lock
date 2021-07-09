@@ -1891,6 +1891,8 @@ dependencies = [
  "image 0.22.5",
  "pyxel",
  "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

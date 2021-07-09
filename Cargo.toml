@@ -12,6 +12,8 @@ bevy_egui = "0.4"
 image = "0.22"
 pyxel = { version = "0.2", features=["images"] }
 regex = "1"
+serde = { version = "1.0", feature = ["derive"] }
+serde_json = "1.0"
 
 [patch.crates-io]
 pyxel = { git = 'https://github.com/Jbat1Jumper/pyxel', features=["images"] }
