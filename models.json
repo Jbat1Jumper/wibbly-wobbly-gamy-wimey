@@ -1,0 +1,132 @@
+{
+  "a": {
+    "next_part_id": 12,
+    "entries": {
+      "8": {
+        "attached_to": 6,
+        "part": {
+          "Translation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "7": {
+        "attached_to": null,
+        "part": {
+          "Translation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "5": {
+        "attached_to": 2,
+        "part": {
+          "Translation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "11": {
+        "attached_to": 10,
+        "part": {
+          "EndEffector": "L_HAND"
+        }
+      },
+      "2": {
+        "attached_to": 1,
+        "part": {
+          "Rotation": {
+            "Variable": "L_SHOULDER"
+          }
+        }
+      },
+      "9": {
+        "attached_to": 8,
+        "part": {
+          "Rotation": {
+            "Variable": "L_ELBOW"
+          }
+        }
+      },
+      "10": {
+        "attached_to": 9,
+        "part": {
+          "Translation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "1": {
+        "attached_to": null,
+        "part": {
+          "Translation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "6": {
+        "attached_to": 5,
+        "part": {
+          "Rotation": {
+            "Variable": "L_SHOULDER_2"
+          }
+        }
+      }
+    }
+  },
+  "Human": {
+    "next_part_id": 4,
+    "entries": {
+      "2": {
+        "attached_to": 1,
+        "part": {
+          "Translation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "1": {
+        "attached_to": 0,
+        "part": {
+          "Rotation": {
+            "Variable": "left_shoulder"
+          }
+        }
+      },
+      "3": {
+        "attached_to": 2,
+        "part": {
+          "Rotation": {
+            "Variable": "left_shoulder_2"
+          }
+        }
+      },
+      "0": {
+        "attached_to": null,
+        "part": {
+          "Translation": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    }
+  },
+  "Dog": {
+    "next_part_id": 0,
+    "entries": {}
+  }
+}

@@ -3,6 +3,7 @@ mod common;
 mod plain_simple_physics;
 mod pyxel_plugin;
 mod unreachable;
+mod playdate;
 
 #[macro_use]
 use bevy::prelude::*;
@@ -13,6 +14,12 @@ use pyxel_plugin::PyxelPlugin;
 use unreachable::UnreachableGame;
 
 pub fn main() {
+    playdate::main();
+    //main_unreachable();
+}
+
+
+pub fn main_unreachable() {
     App::build()
         .insert_resource(bevy::log::LogSettings {
             level: bevy::log::Level::DEBUG,
