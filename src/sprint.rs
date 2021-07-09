@@ -1,5 +1,5 @@
 use bevy::{app::AppExit, prelude::*, utils::HashMap};
-use bevy_egui::{egui, EguiContext, EguiPlugin};
+use crate::root_ui::*;
 
 
 pub struct SprintGame;
@@ -12,23 +12,37 @@ impl Plugin for SprintGame {
             // .require(EguiPlugin)
             // .should_be_implemented()
             .add_startup_system(on_startup.system())
-            .add_system(editor_ui.system());
+            .add_startup_system(create_menu_entry.system());
     }
 }
 fn on_startup(){
     info!("Sprint Startup");
 }
 
-fn editor_ui(
-    egui_context: ResMut<EguiContext>,
-) {
-    egui::TopPanel::top("sprint_menu").show(egui_context.ctx(), |ui| {
-        egui::menu::bar(ui, |ui| {
-            egui::menu::menu(ui, "Sprint", |ui| {
-                if ui.button("Hi").clicked() {
-                    info!("You got here!");
-                }
-            });
-        });
+// TODO: This could be totally generated with a macro
+fn create_menu_entry(mut commands: Commands) {
+    commands.spawn().insert(MenuEntry {
+        name: "Sprint".into(),
+        actions: vec![
+            MenuEntryAction {
+                name: "Start".into(),
+                callback: &|cmd: &mut Commands| {
+                    cmd.add(SprintCommand::Start);
+                },
+            }
+        ],
     });
 }
+
+enum SprintCommand {
+    Start,
+}
+
+impl bevy::ecs::system::Command for SprintCommand {
+    fn write(self: Box<Self>, _world: &mut World) {
+        match *self {
+            SprintCommand::Start => info!("llegaste aca coño tio"),
+        }
+    }
+}
+

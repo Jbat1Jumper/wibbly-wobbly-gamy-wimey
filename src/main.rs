@@ -25,8 +25,8 @@ pub fn main() {
         .add_plugin(EguiPlugin)
         .add_plugin(PyxelPlugin)
         //.add_plugin(UnreachableGame)
-        .add_system(root_ui::root_editor_ui.system())
-        .add_plugin(playdate::PlaydateModelsPlugin)
+        .add_plugin(root_ui::RootUiPlugin)
+        //.add_plugin(playdate::PlaydateModelsPlugin)
         .add_plugin(sprint::SprintGame)
         //.add_startup_system(setup_orhographic_camera.system())
         //.add_startup_system(common::known_fonts::load_known_fonts.system())
@@ -49,23 +49,108 @@ fn setup_orhographic_camera(mut commands: Commands) {
     info!("Started!");
 }
 
-
-/// TODO: Make plugin
 mod root_ui {
-    use bevy::{app::AppExit, prelude::*};
-    use bevy_egui::{egui, EguiContext};
-    pub fn root_editor_ui(
+    use bevy::app::AppExit;
+
+    // Export for usability and strangling dependences
+    use bevy::prelude::*;
+    pub use bevy_egui::{egui, EguiContext};
+
+    pub struct RootUiPlugin;
+
+    impl Plugin for RootUiPlugin {
+        fn build(&self, app: &mut AppBuilder) {
+            app
+                // .see("https://github.com/bevyengine/bevy/issues/69")
+                // .require(DefaultPlugins)
+                // .require(EguiPlugin)
+                // .should_be_implemented()
+                .add_system(draw_root_menu.system())
+                .add_plugin(file_menu::FileMenuPlugin);
+        }
+    }
+
+    /// Each MenuEntry represents a dropdown menu with actions
+    /// in the main menu bar, alongsides the always
+    /// present `File` one.
+    ///
+    // TODO: Add ordering to the entries
+    pub struct MenuEntry {
+        pub name: String,
+        pub actions: Vec<MenuEntryAction>,
+    }
+
+    /// When pressed, it triggers some logic only known to the
+    /// owner of the menu entry
+    ///
+    pub struct MenuEntryAction {
+        pub name: String,
+        pub callback: &'static dyn ActionCallback,
+    }
+
+    pub trait ActionCallback: Fn(&mut Commands) -> () + Sync {}
+    impl<F> ActionCallback for F where F: Fn(&mut Commands) -> () + Sync {}
+
+    mod file_menu {
+        use super::*;
+        use bevy::{app, prelude::*};
+
+        pub struct FileMenuPlugin;
+
+        impl Plugin for FileMenuPlugin {
+            fn build(&self, app: &mut AppBuilder) {
+                app
+                    // .require(RootUiPlugin)
+                    .add_startup_system(create_file_menu_entry.system());
+            }
+        }
+
+        fn create_file_menu_entry(mut commands: Commands) {
+            commands.spawn().insert(MenuEntry {
+                name: "File".into(),
+                actions: vec![MenuEntryAction {
+                    name: "Quit".into(),
+                    callback: &|cmd: &mut Commands| {
+                        cmd.add(FileCommand::Quit);
+                    },
+                }],
+            });
+        }
+
+        enum FileCommand {
+            Quit,
+        }
+
+        impl bevy::ecs::system::Command for FileCommand {
+            fn write(self: Box<Self>, world: &mut World) {
+                match *self {
+                    FileCommand::Quit => {
+                        let mut quit_events = world
+                            .get_resource_mut::<bevy::app::Events<app::AppExit>>()
+                            .unwrap();
+                        quit_events.send(AppExit);
+                    }
+                }
+            }
+        }
+    }
+
+    fn draw_root_menu(
         mut commands: Commands,
         egui_context: ResMut<EguiContext>,
-        mut exit: EventWriter<AppExit>,
+        menu_entries: Query<&MenuEntry>,
     ) {
-        egui::TopPanel::top("root_editor_ui").show(egui_context.ctx(), |ui| {
+        egui::TopPanel::top("root_menu").show(egui_context.ctx(), |ui| {
             egui::menu::bar(ui, |ui| {
-                egui::menu::menu(ui, "File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        exit.send(AppExit);
-                    }
-                });
+                for entry in menu_entries.iter() {
+                    egui::menu::menu(ui, &entry.name, |ui| {
+                        for action in entry.actions.iter() {
+                            if ui.button(&action.name).clicked() {
+                                (action.callback)(&mut commands);
+                            }
+                        }
+                    });
+                }
             });
         });
     }

@@ -1,5 +1,5 @@
+use crate::root_ui::*;
 use bevy::{app::AppExit, prelude::*, utils::HashMap};
-use bevy_egui::{egui, EguiContext, EguiPlugin};
 
 // #[derive(Clone, Copy, Debug)]
 // pub enum Pixel {
@@ -40,12 +40,9 @@ pub struct PlaydateModelsPlugin;
 impl Plugin for PlaydateModelsPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app
-            // .see("https://github.com/bevyengine/bevy/issues/69")
-            // .require(DefaultPlugins)
-            // .require(EguiPlugin)
-            // .should_be_implemented()
+            // .require(RootUiPlugin)
             .add_startup_system(on_startup.system())
-            .add_system(editor_ui.system())
+            .add_startup_system(create_menu_entry.system())
             .insert_resource(ModelDatabase::default())
             .add_system(ModelDatabase::render_stuff.system())
             .add_system(ModelEditor::render_editors.system());
@@ -57,32 +54,64 @@ fn on_startup(mut commands: Commands, mut model_db: ResMut<ModelDatabase>) {
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
 }
 
-fn editor_ui(
-    egui_context: ResMut<EguiContext>,
-    mut model_db: ResMut<ModelDatabase>,
-) {
-    egui::TopPanel::top("playdate_menu").show(egui_context.ctx(), |ui| {
-        egui::menu::bar(ui, |ui| {
-            egui::menu::menu(ui, "Models", |ui| {
-                if ui.button("File In").clicked() {
-                    model_db.load_from_disk();
-                }
-                if ui.button("File Out").clicked() {
-                    model_db.save_to_disk();
-                }
-                ui.separator();
-                if ui.button("Open").clicked() {
-                    model_db.open_prompt();
-                }
-                if ui.button("Create New").clicked() {
-                    model_db.create_prompt();
-                }
-                if ui.button("Preview").clicked() {
-                    model_db.preview_prompt();
-                }
-            });
-        });
+// TODO: This could be totally generated with a macro
+fn create_menu_entry(mut commands: Commands) {
+    commands.spawn().insert(MenuEntry {
+        name: "Models".into(),
+        actions: vec![
+            MenuEntryAction {
+                name: "File In".into(),
+                callback: &|cmd: &mut Commands| {
+                    cmd.add(ModelDatabaseCommand::FileIn);
+                },
+            },
+            MenuEntryAction {
+                name: "File Out".into(),
+                callback: &|cmd: &mut Commands| {
+                    cmd.add(ModelDatabaseCommand::FileOut);
+                },
+            },
+            MenuEntryAction {
+                name: "Open".into(),
+                callback: &|cmd: &mut Commands| {
+                    cmd.add(ModelDatabaseCommand::Open);
+                },
+            },
+            MenuEntryAction {
+                name: "Create New".into(),
+                callback: &|cmd: &mut Commands| {
+                    cmd.add(ModelDatabaseCommand::CreateNew);
+                },
+            },
+            MenuEntryAction {
+                name: "Preview".into(),
+                callback: &|cmd: &mut Commands| {
+                    cmd.add(ModelDatabaseCommand::Preview);
+                },
+            },
+        ],
     });
+}
+
+enum ModelDatabaseCommand {
+    FileIn,
+    FileOut,
+    Open,
+    CreateNew,
+    Preview,
+}
+
+impl bevy::ecs::system::Command for ModelDatabaseCommand {
+    fn write(self: Box<Self>, world: &mut World) {
+        let mut model_db = world.get_resource_mut::<ModelDatabase>().unwrap();
+        match *self {
+            ModelDatabaseCommand::FileIn => model_db.load_from_disk(),
+            ModelDatabaseCommand::FileOut => model_db.save_to_disk(),
+            ModelDatabaseCommand::Open => model_db.open_prompt(),
+            ModelDatabaseCommand::CreateNew => model_db.create_prompt(),
+            ModelDatabaseCommand::Preview => model_db.preview_prompt(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]

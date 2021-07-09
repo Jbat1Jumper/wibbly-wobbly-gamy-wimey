@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use crate::root_ui::*;
 
 mod scenes;
 
@@ -8,8 +9,7 @@ impl Plugin for UnreachableGame {
     fn build(&self, app: &mut AppBuilder) {
         app
             // .see("https://github.com/bevyengine/bevy/issues/69")
-            // .require(DefaultPlugins)
-            // .require(EguiPlugin)
+            // .require(RootUiPlugin)
             // .should_be_implemented()
             .add_plugin(scenes::LoadGameScenes)
             .add_system(debug::debug_window.system());
@@ -19,7 +19,7 @@ impl Plugin for UnreachableGame {
 mod debug {
     use crate::{common, plain_simple_physics, pyxel_plugin};
     use bevy::prelude::*;
-    use bevy_egui::{egui, EguiContext};
+    use crate::root_ui::*;
 
     pub fn debug_window(
         egui_context: ResMut<EguiContext>,
