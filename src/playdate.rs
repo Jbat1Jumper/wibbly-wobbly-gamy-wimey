@@ -35,65 +35,84 @@ use bevy::{app::AppExit, prelude::*, utils::HashMap};
 //
 //
 
-pub struct PlaydateModelsPlugin;
+pub struct PlaydateSkeletonsPlugin;
 
-impl Plugin for PlaydateModelsPlugin {
+impl Plugin for PlaydateSkeletonsPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app
             // .require(RootUiPlugin)
             .add_startup_system(on_startup.system())
             .add_startup_system(create_menu_entry.system())
-            .insert_resource(ModelDatabase::default())
-            .add_system(ModelDatabase::render_stuff.system())
-            .add_system(ModelEditor::render_editors.system());
+            .insert_resource(SkeletonDatabase::default())
+            .add_system(SkeletonDatabase::render_stuff.system())
+            .add_system(SkeletonEditor::render_editors.system());
     }
 }
 
-fn on_startup(mut commands: Commands, mut model_db: ResMut<ModelDatabase>) {
-    model_db.load_from_disk();
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+fn on_startup(
+    mut commands: Commands,
+    mut skeleton_db: ResMut<SkeletonDatabase>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    skeleton_db.load_from_disk();
+    // commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+   
+    commands.spawn_bundle(PbrBundle {
+        mesh: meshes.add(Mesh::from(shape::Plane { size: 5.0 })),
+        material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
+        ..Default::default()
+    }); 
+    commands.spawn_bundle(LightBundle {
+        transform: Transform::from_xyz(4.0, 8.0, 4.0),
+        ..Default::default()
+    });
+    commands.spawn_bundle(PerspectiveCameraBundle {
+        transform: Transform::from_xyz(-2.0, 2.5, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ..Default::default()
+    });
 }
 
 // TODO: This could be totally generated with a macro
 fn create_menu_entry(mut commands: Commands) {
     commands.spawn().insert(MenuEntry {
-        name: "Models".into(),
+        name: "Skeletons".into(),
         actions: vec![
             MenuEntryAction {
                 name: "File In".into(),
                 callback: &|cmd: &mut Commands| {
-                    cmd.add(ModelDatabaseCommand::FileIn);
+                    cmd.add(SkeletonDatabaseCommand::FileIn);
                 },
             },
             MenuEntryAction {
                 name: "File Out".into(),
                 callback: &|cmd: &mut Commands| {
-                    cmd.add(ModelDatabaseCommand::FileOut);
+                    cmd.add(SkeletonDatabaseCommand::FileOut);
                 },
             },
             MenuEntryAction {
                 name: "Open".into(),
                 callback: &|cmd: &mut Commands| {
-                    cmd.add(ModelDatabaseCommand::Open);
+                    cmd.add(SkeletonDatabaseCommand::Open);
                 },
             },
             MenuEntryAction {
                 name: "Create New".into(),
                 callback: &|cmd: &mut Commands| {
-                    cmd.add(ModelDatabaseCommand::CreateNew);
+                    cmd.add(SkeletonDatabaseCommand::CreateNew);
                 },
             },
             MenuEntryAction {
                 name: "Preview".into(),
                 callback: &|cmd: &mut Commands| {
-                    cmd.add(ModelDatabaseCommand::Preview);
+                    cmd.add(SkeletonDatabaseCommand::Preview);
                 },
             },
         ],
     });
 }
 
-enum ModelDatabaseCommand {
+enum SkeletonDatabaseCommand {
     FileIn,
     FileOut,
     Open,
@@ -101,57 +120,57 @@ enum ModelDatabaseCommand {
     Preview,
 }
 
-impl bevy::ecs::system::Command for ModelDatabaseCommand {
+impl bevy::ecs::system::Command for SkeletonDatabaseCommand {
     fn write(self: Box<Self>, world: &mut World) {
-        let mut model_db = world.get_resource_mut::<ModelDatabase>().unwrap();
+        let mut skeleton_db = world.get_resource_mut::<SkeletonDatabase>().unwrap();
         match *self {
-            ModelDatabaseCommand::FileIn => model_db.load_from_disk(),
-            ModelDatabaseCommand::FileOut => model_db.save_to_disk(),
-            ModelDatabaseCommand::Open => model_db.open_prompt(),
-            ModelDatabaseCommand::CreateNew => model_db.create_prompt(),
-            ModelDatabaseCommand::Preview => model_db.preview_prompt(),
+            SkeletonDatabaseCommand::FileIn => skeleton_db.load_from_disk(),
+            SkeletonDatabaseCommand::FileOut => skeleton_db.save_to_disk(),
+            SkeletonDatabaseCommand::Open => skeleton_db.open_prompt(),
+            SkeletonDatabaseCommand::CreateNew => skeleton_db.create_prompt(),
+            SkeletonDatabaseCommand::Preview => skeleton_db.preview_prompt(),
         }
     }
 }
 
 #[derive(Debug, Default, Clone)]
-struct ModelDatabase {
-    models: HashMap<String, model::Definition>,
+struct SkeletonDatabase {
+    skeletons: HashMap<String, skeleton::Definition>,
     new_name: Option<String>,
     open_prompt: bool,
     preview_prompt: Option<String>,
 }
 
-impl ModelDatabase {
+impl SkeletonDatabase {
     fn create_prompt(&mut self) {
         self.new_name = Some("".into());
     }
 
     fn preview_prompt(&mut self) {
-        if let Some(name) = self.models.keys().next() {
+        if let Some(name) = self.skeletons.keys().next() {
             self.preview_prompt = Some(name.clone());
         }
     }
 
     fn file_path() -> &'static std::path::Path {
-        std::path::Path::new("models.json")
+        std::path::Path::new("skeletons.json")
     }
 
     fn load_from_disk(&mut self) {
         if Self::file_path().exists() {
             info!("File exists, loading!");
-            let f = std::fs::File::open(Self::file_path()).expect("Failed to read models file");
-            self.models = serde_json::from_reader(f).expect("Failed to parse models file");
-            info!("Loaded {} models", self.models.len());
+            let f = std::fs::File::open(Self::file_path()).expect("Failed to read skeletons file");
+            self.skeletons = serde_json::from_reader(f).expect("Failed to parse skeletons file");
+            info!("Loaded {} skeletons", self.skeletons.len());
         } else {
             warn!("File does not exist");
         }
     }
     fn save_to_disk(&mut self) {
         info!("Writing to file!");
-        let f = std::fs::File::create(Self::file_path()).expect("Failed to write to models file");
-        serde_json::to_writer_pretty(f, &self.models).expect("Failed to rialize to models files");
-        info!("Wrote {} models", self.models.len());
+        let f = std::fs::File::create(Self::file_path()).expect("Failed to write to skeletons file");
+        serde_json::to_writer_pretty(f, &self.skeletons).expect("Failed to rialize to skeletons files");
+        info!("Wrote {} skeletons", self.skeletons.len());
     }
     fn open_prompt(&mut self) {
         self.open_prompt = true;
@@ -161,15 +180,15 @@ impl ModelDatabase {
         egui_context: ResMut<EguiContext>,
         mut db: ResMut<Self>,
     ) {
-        let ModelDatabase {
-            ref mut models,
+        let SkeletonDatabase {
+            ref mut skeletons,
             ref mut new_name,
             ref mut open_prompt,
             ref mut preview_prompt,
         } = *db;
         let mut clear_prompt = false;
         if let Some(ref mut new_name) = new_name {
-            egui::Window::new("Create New Model").show(egui_context.ctx(), |ui| {
+            egui::Window::new("Create New Skeleton").show(egui_context.ctx(), |ui| {
                 ui.text_edit_singleline(new_name);
                 ui.horizontal(|ui| {
                     if ui.button("Cancel").clicked() {
@@ -179,15 +198,15 @@ impl ModelDatabase {
                         ui.label("Name cant be empty");
                         return;
                     }
-                    if models.contains_key(new_name) {
-                        ui.label("Already exists a model with the given name");
+                    if skeletons.contains_key(new_name) {
+                        ui.label("Already exists a skeleton with the given name");
                         return;
                     }
                     if ui.button("Create").clicked() {
-                        models.insert(new_name.clone(), model::Definition::default());
+                        skeletons.insert(new_name.clone(), skeleton::Definition::default());
                         commands
                             .spawn()
-                            .insert(ModelEditor::for_model(new_name.clone()));
+                            .insert(SkeletonEditor::for_skeleton(new_name.clone()));
                         clear_prompt = true;
                     }
                 });
@@ -199,46 +218,46 @@ impl ModelDatabase {
 
         if *open_prompt {
             let mut window_open = true;
-            let mut model_to_delete = None;
-            egui::Window::new("Models")
+            let mut skeleton_to_delete = None;
+            egui::Window::new("Skeletons")
                 .open(&mut window_open)
                 .show(egui_context.ctx(), |ui| {
-                    for (name, _model) in models.iter() {
+                    for (name, _skeleton) in skeletons.iter() {
                         ui.horizontal(|ui| {
                             ui.label(name);
                             ui.separator();
                             if ui.small_button("open").clicked() {
                                 commands
                                     .spawn()
-                                    .insert(ModelEditor::for_model(name.clone()));
+                                    .insert(SkeletonEditor::for_skeleton(name.clone()));
                                 *open_prompt = false;
                             }
                             if ui.small_button("delete").clicked() {
-                                model_to_delete = Some(name.clone());
+                                skeleton_to_delete = Some(name.clone());
                             }
                         });
                     }
                 });
-            if let Some(name) = model_to_delete {
-                models.remove(&name);
+            if let Some(name) = skeleton_to_delete {
+                skeletons.remove(&name);
             }
             *open_prompt &= window_open;
         }
 
         let mut preview_prompt_open = true;
         if let Some(name) = preview_prompt {
-            egui::Window::new("Preview Model")
+            egui::Window::new("Preview Skeleton")
                 .open(&mut preview_prompt_open)
                 .show(egui_context.ctx(), |ui| {
-                    egui::ComboBox::from_label("Model")
+                    egui::ComboBox::from_label("Skeleton")
                         .selected_text(name.as_str())
                         .show_ui(ui, |ui| {
-                            for n in models.keys() {
+                            for n in skeletons.keys() {
                                 ui.selectable_value(name, n.clone(), n);
                             }
                         });
 
-                    let md = models.get_mut(name).unwrap();
+                    let md = skeletons.get_mut(name).unwrap();
 
                     let mut vars: Vec<_> = md.variables().into_iter().collect();
                     vars.sort();
@@ -254,27 +273,27 @@ impl ModelDatabase {
     }
 }
 
-struct ModelEditor {
-    model_name: String,
+struct SkeletonEditor {
+    skeleton_name: String,
 }
 
-impl ModelEditor {
-    pub fn for_model(model_name: String) -> Self {
-        Self { model_name }
+impl SkeletonEditor {
+    pub fn for_skeleton(skeleton_name: String) -> Self {
+        Self { skeleton_name }
     }
 
     pub fn render_editors(
         mut commands: Commands,
         egui_context: ResMut<EguiContext>,
-        mut editors: Query<(Entity, &mut ModelEditor)>,
-        mut model_db: ResMut<ModelDatabase>,
+        mut editors: Query<(Entity, &mut SkeletonEditor)>,
+        mut skeleton_db: ResMut<SkeletonDatabase>,
     ) {
         for (editor_eid, mut editor) in editors.iter_mut() {
             let mut open = true;
-            egui::Window::new(format!("Model Editor: {}", editor.model_name))
+            egui::Window::new(format!("Skeleton Editor: {}", editor.skeleton_name))
                 .open(&mut open)
                 .show(egui_context.ctx(), |ui| {
-                    let md = model_db.models.get_mut(&editor.model_name).unwrap();
+                    let md = skeleton_db.skeletons.get_mut(&editor.skeleton_name).unwrap();
 
                     let mut changes = vec![];
 
@@ -292,17 +311,17 @@ impl ModelEditor {
                         .selected_text("Add new part to root")
                         .show_ui(ui, |ui| {
                             if ui.button("Translation").clicked() {
-                                changes.push(model::Change::AddToRoot(model::Part::Translation(
+                                changes.push(skeleton::Change::AddToRoot(skeleton::Part::Translation(
                                     0., 0., 0.,
                                 )));
                             }
                             if ui.button("Rotation").clicked() {
-                                changes.push(model::Change::AddToRoot(model::Part::Rotation(
-                                    model::FloatValue::Constant(0.),
+                                changes.push(skeleton::Change::AddToRoot(skeleton::Part::Rotation(
+                                    skeleton::FloatValue::Constant(0.),
                                 )));
                             }
                             if ui.button("EndEffector").clicked() {
-                                changes.push(model::Change::AddToRoot(model::Part::EndEffector(
+                                changes.push(skeleton::Change::AddToRoot(skeleton::Part::EndEffector(
                                     "EFFECTOR NAME".into(),
                                 )));
                             }
@@ -319,28 +338,28 @@ impl ModelEditor {
     }
 }
 
-fn part_name(part: &model::Part) -> String {
+fn part_name(part: &skeleton::Part) -> String {
     match part {
-        model::Part::Translation(x, y, z) => format!("Translation  ({}, {}, {})", x, y, z),
-        model::Part::Rotation(value) => match value {
-            model::FloatValue::Constant(c) => format!("Rotation by {} deg", c),
-            model::FloatValue::Variable(name) => format!("Rotation by {} deg", name),
+        skeleton::Part::Translation(x, y, z) => format!("Translation  ({}, {}, {})", x, y, z),
+        skeleton::Part::Rotation(value) => match value {
+            skeleton::FloatValue::Constant(c) => format!("Rotation by {} deg", c),
+            skeleton::FloatValue::Variable(name) => format!("Rotation by {} deg", name),
         },
-        model::Part::EndEffector(name) => format!("EndEffector {}", name),
+        skeleton::Part::EndEffector(name) => format!("EndEffector {}", name),
     }
 }
 
 fn edit_part(
     ui: &mut egui::Ui,
     id: usize,
-    part: &model::Part,
-    md: &model::Definition,
-    changes: &mut Vec<model::Change>,
+    part: &skeleton::Part,
+    md: &skeleton::Definition,
+    changes: &mut Vec<skeleton::Change>,
 ) {
     ui.horizontal(|ui| {
         ui.label("▶");
         match part {
-            model::Part::Translation(x, y, z) => {
+            skeleton::Part::Translation(x, y, z) => {
                 let mut p = (*x, *y, *z);
                 ui.label("Translate by (");
                 ui.add(egui::DragValue::new(&mut p.0).speed(0.1));
@@ -349,77 +368,77 @@ fn edit_part(
                 ui.label(")");
 
                 if p != (*x, *y, *z) {
-                    changes.push(model::Change::Replace(
+                    changes.push(skeleton::Change::Replace(
                         id,
-                        model::Part::Translation(p.0, p.1, p.2),
+                        skeleton::Part::Translation(p.0, p.1, p.2),
                     ));
                 }
             }
 
-            model::Part::Rotation(value) => {
+            skeleton::Part::Rotation(value) => {
                 let mut new_value = None;
                 match value {
-                    model::FloatValue::Constant(c) => {
+                    skeleton::FloatValue::Constant(c) => {
                         ui.label("Rotate by constant");
                         let mut nc = *c;
                         if ui.drag_angle(&mut nc).changed() {
-                            new_value = Some(model::FloatValue::Constant(nc));
+                            new_value = Some(skeleton::FloatValue::Constant(nc));
                         }
                         ui.label("degrees");
                         ui.separator();
                         if ui.small_button("make var").clicked() {
-                            new_value = Some(model::FloatValue::Variable("VAR_NAME".into()));
+                            new_value = Some(skeleton::FloatValue::Variable("VAR_NAME".into()));
                         }
                     }
-                    model::FloatValue::Variable(name) => {
+                    skeleton::FloatValue::Variable(name) => {
                         ui.label("Rotate by var");
                         let mut nname = name.clone();
                         if ui.text_edit_singleline(&mut nname).changed() {
-                            new_value = Some(model::FloatValue::Variable(nname));
+                            new_value = Some(skeleton::FloatValue::Variable(nname));
                         }
                         ui.label("degrees");
                         ui.separator();
                         if ui.small_button("make const").clicked() {
-                            new_value = Some(model::FloatValue::Constant(0.));
+                            new_value = Some(skeleton::FloatValue::Constant(0.));
                         }
                     }
                 }
 
                 if let Some(value) = new_value {
-                    changes.push(model::Change::Replace(id, model::Part::Rotation(value)));
+                    changes.push(skeleton::Change::Replace(id, skeleton::Part::Rotation(value)));
                 }
             }
-            model::Part::EndEffector(name) => {
+            skeleton::Part::EndEffector(name) => {
                 let mut nname = name.clone();
                 ui.label("End effector named");
                 if ui.text_edit_singleline(&mut nname).changed() {
-                    changes.push(model::Change::Replace(id, model::Part::EndEffector(nname)));
+                    changes.push(skeleton::Change::Replace(id, skeleton::Part::EndEffector(nname)));
                 }
             }
         }
         ui.separator();
         if ui.small_button("delete").clicked() {
-            changes.push(model::Change::Delete(id));
+            changes.push(skeleton::Change::Delete(id));
         }
         egui::ComboBox::from_id_source(id)
             .selected_text("add child")
             .show_ui(ui, |ui| {
                 if ui.button("Translation").clicked() {
-                    changes.push(model::Change::AddToPart(
+                    changes.push(skeleton::Change::AddToPart(
                         id,
-                        model::Part::Translation(0., 0., 0.),
+                        skeleton::Part::Translation(0., 0., 0.),
                     ));
                 }
                 if ui.button("Rotation").clicked() {
-                    changes.push(model::Change::AddToPart(
+                    changes.push(skeleton::Change::AddToPart(
                         id,
-                        model::Part::Rotation(model::FloatValue::Constant(0.)),
+                        skeleton::Part::Rotation(skeleton::FloatValue::Constant(0.)),
                     ));
                 }
                 if ui.button("EndEffector").clicked() {
-                    changes.push(model::Change::AddToPart(
+                    changes.push(skeleton::Change::AddToPart(
                         id,
-                        model::Part::EndEffector("EFFECTOR NAME".into()),
+                        skeleton::Part::EndEffector("EFFECTOR NAME".into()),
                     ));
                 }
             });
@@ -443,11 +462,11 @@ fn edit_part(
     }
 }
 
-mod model {
+mod skeleton {
     use bevy::utils::{HashMap, HashSet};
 
     pub struct Instance {
-        pub model_name: String,
+        pub skeleton_name: String,
         pub variables: HashMap<String, f32>,
     }
 

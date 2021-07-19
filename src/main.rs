@@ -27,9 +27,9 @@ pub fn main() {
         .add_plugin(PyxelPlugin)
         //.add_plugin(UnreachableGame)
         .add_plugin(root_ui::RootUiPlugin)
-        //.add_plugin(playdate::PlaydateModelsPlugin)
-        .add_plugin(sprint::SprintGame)
-        .add_plugin(peach::PeachyThingiesPlugin)
+        .add_plugin(playdate::PlaydateSkeletonsPlugin)
+        //.add_plugin(sprint::SprintGame)
+        //.add_plugin(peach::PeachyThingiesPlugin)
         //.add_startup_system(setup_orhographic_camera.system())
         //.add_startup_system(common::known_fonts::load_known_fonts.system())
         .run();
