@@ -101,8 +101,17 @@ impl Definition {
                 if !self.links.contains_key(&to_parent_slot.0) {
                     return Err(ChangeError::UnexistingLink(to_parent_slot.0));
                 }
-                if !self.links.get(&to_parent_slot.0).unwrap().slots.contains_key(&to_parent_slot.1) {
-                    return Err(ChangeError::UnexistingSlot(to_parent_slot.0, to_parent_slot.1));
+                if !self
+                    .links
+                    .get(&to_parent_slot.0)
+                    .unwrap()
+                    .slots
+                    .contains_key(&to_parent_slot.1)
+                {
+                    return Err(ChangeError::UnexistingSlot(
+                        to_parent_slot.0,
+                        to_parent_slot.1,
+                    ));
                 }
 
                 self.last_link_id += 1;
@@ -179,11 +188,17 @@ impl Definition {
         l
     }
     pub fn get_link_transform(&self, link_id: LinkId) -> Transform {
-        if link_id == 0 {
+        self.get_link_transform_from(0, link_id)
+    }
+    fn get_link_transform_from(&self, origin_link_id: LinkId, target_link_id: LinkId) -> Transform {
+        if target_link_id == 0 {
             Transform::identity()
-        } else {
+        } else if target_link_id == 1 {
             Transform::from_translation(2.0 * UP)
+        } else {
+            Transform::from_translation(4.0 * UP)
         }
+
     }
 }
 
@@ -276,8 +291,41 @@ mod test {
         assert_eq!(res, Err(ChangeError::UnexistingSlot(0, 'q')));
     }
 
-    // TODO
-    // ----
-    // add_two_links_to_the_same_slot_fails
-    // remove_link0_fails
+    #[test]
+    fn add_multiple_links_with_fixed_joint() {
+        let mut s = Definition::new(arm_base_link());
+        s.apply(Change::Add {
+            link: l_link(),
+            to_parent_slot: SlotId(0, 'n'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        })
+        .expect("Failed to add first l_link");
+
+        s.apply(Change::Add {
+            link: l_link(),
+            to_parent_slot: SlotId(1, 'n'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        })
+        .expect("Failed to add second l_link");
+
+        assert!(s.has_link(2));
+        assert_eq!(s.links(), vec![0, 1, 2]);
+
+        let t = s.get_link_transform(2);
+        assert_eq!(t, Transform::from_translation(4.0 * UP))
+    }
+
+    // # TODO
+    // ## Fixed Joint
+    // - add_multiple_links_with_fixed_joint
+    // - add_two_links_to_the_same_slot_fails
+    // - remove_link0_fails
+    // ## Twisting Joint
+    // - ...
+    // ## Rotational Joint
+    // - ...
+    // ## t_link
+    // - ...
 }
