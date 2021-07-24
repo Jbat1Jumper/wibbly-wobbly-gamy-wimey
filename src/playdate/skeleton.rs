@@ -73,9 +73,10 @@ pub struct VariableConstraint {
     pub max: Option<f32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ChangeError {
-    CannotRemoveLink0,
+    UnexistingLink(LinkId),
+    UnexistingSlot(LinkId, SlotName),
 }
 
 impl Definition {
@@ -97,6 +98,13 @@ impl Definition {
                 joint,
                 local_slot_name,
             } => {
+                if !self.links.contains_key(&to_parent_slot.0) {
+                    return Err(ChangeError::UnexistingLink(to_parent_slot.0));
+                }
+                if !self.links.get(&to_parent_slot.0).unwrap().slots.contains_key(&to_parent_slot.1) {
+                    return Err(ChangeError::UnexistingSlot(to_parent_slot.0, to_parent_slot.1));
+                }
+
                 self.last_link_id += 1;
                 let id = self.last_link_id;
                 self.links.insert(id, link);
@@ -166,7 +174,9 @@ impl Definition {
     }
 
     pub fn links(&self) -> Vec<LinkId> {
-        self.links.keys().cloned().collect()
+        let mut l: Vec<_> = self.links.keys().cloned().collect();
+        l.sort();
+        l
     }
     pub fn get_link_transform(&self, link_id: LinkId) -> Transform {
         if link_id == 0 {
@@ -185,9 +195,9 @@ pub struct Pose {
 #[macro_use]
 use maplit::hashmap;
 
-const LEFT    : Vec3 = Vec3::X;
-const FORWARD : Vec3 = Vec3::Y;
-const UP      : Vec3 = Vec3::Z;
+const LEFT: Vec3 = Vec3::X;
+const FORWARD: Vec3 = Vec3::Y;
+const UP: Vec3 = Vec3::Z;
 
 fn arm_base_link() -> Link {
     Link {
@@ -245,4 +255,29 @@ mod test {
         let t = s.get_link_transform(1);
         assert_eq!(t, Transform::from_translation(2.0 * UP))
     }
+
+    #[test]
+    fn add_link_to_unexisting_slot_fails() {
+        let mut s = Definition::new(arm_base_link());
+        let res = s.apply(Change::Add {
+            link: l_link(),
+            to_parent_slot: SlotId(4, 'n'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        });
+        assert_eq!(res, Err(ChangeError::UnexistingLink(4)));
+
+        let res = s.apply(Change::Add {
+            link: l_link(),
+            to_parent_slot: SlotId(0, 'q'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        });
+        assert_eq!(res, Err(ChangeError::UnexistingSlot(0, 'q')));
+    }
+
+    // TODO
+    // ----
+    // add_two_links_to_the_same_slot_fails
+    // remove_link0_fails
 }
