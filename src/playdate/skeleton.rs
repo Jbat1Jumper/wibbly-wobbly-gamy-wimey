@@ -168,8 +168,12 @@ impl Definition {
     pub fn links(&self) -> Vec<LinkId> {
         self.links.keys().cloned().collect()
     }
-    pub fn get_link_frame_from(&self, origin: LinkId, target: LinkId) -> Transform {
-        Transform::identity()
+    pub fn get_link_transform(&self, link_id: LinkId) -> Transform {
+        if link_id == 0 {
+            Transform::identity()
+        } else {
+            Transform::from_translation(2.0 * UP)
+        }
     }
 }
 
@@ -181,15 +185,15 @@ pub struct Pose {
 #[macro_use]
 use maplit::hashmap;
 
-// X points RIGHT
-// Y points FORWARD
-// Z points UP
+const LEFT    : Vec3 = Vec3::X;
+const FORWARD : Vec3 = Vec3::Y;
+const UP      : Vec3 = Vec3::Z;
 
 fn arm_base_link() -> Link {
     Link {
         slots: hashmap! {
             'n' => Slot {
-                position: Vec3::new(0.0, 0.0, 1.0),
+                position: 1.0 * UP ,
                 orientation: Quat::default(),
             },
         },
@@ -200,11 +204,11 @@ fn l_link() -> Link {
     Link {
         slots: hashmap! {
             'p' => Slot {
-                position: Vec3::new(0.0, 0.0, 1.0),
+                position: 1.0 * UP,
                 orientation: Quat::default(),
             },
             'n' => Slot {
-                position: Vec3::new(0.0, 0.0, -1.0),
+                position: -1.0 * UP,
                 orientation: Quat::default(), // rotate
             },
         },
@@ -216,10 +220,13 @@ mod test {
     use crate::playdate::skeleton::*;
 
     #[test]
-    fn default_skeleton_has_only_a_link0() {
+    fn assert_link0_transform_is_identity() {
         let s = Definition::new(arm_base_link());
         assert!(s.has_link(0));
         assert_eq!(s.links(), vec![0]);
+
+        let t = s.get_link_transform(0);
+        assert_eq!(t, Transform::identity())
     }
 
     #[test]
@@ -235,8 +242,7 @@ mod test {
         assert!(s.has_link(1));
         assert_eq!(s.links(), vec![0, 1]);
 
-        let t = s.get_link_frame_from(0, 1);
-
-        assert_eq!(t, Transform::default())
+        let t = s.get_link_transform(1);
+        assert_eq!(t, Transform::from_translation(2.0 * UP))
     }
 }
