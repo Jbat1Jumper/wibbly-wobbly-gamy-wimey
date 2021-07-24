@@ -191,14 +191,11 @@ impl Definition {
         self.get_link_transform_from(0, link_id)
     }
     fn get_link_transform_from(&self, origin_link_id: LinkId, target_link_id: LinkId) -> Transform {
-        if target_link_id == 0 {
+        if origin_link_id == target_link_id {
             Transform::identity()
-        } else if target_link_id == 1 {
-            Transform::from_translation(2.0 * UP)
         } else {
-            Transform::from_translation(4.0 * UP)
+            Transform::from_translation(2.0 * UP) * self.get_link_transform_from(origin_link_id + 1, target_link_id)
         }
-
     }
 }
 
