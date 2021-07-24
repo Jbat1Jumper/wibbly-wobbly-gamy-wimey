@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 pub type LinkId = usize;
 pub type SlotName = char;
 
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Eq, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct SlotId(LinkId, SlotName);
 
 pub type Variable = String;
@@ -76,7 +76,8 @@ pub struct VariableConstraint {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ChangeError {
     UnexistingLink(LinkId),
-    UnexistingSlot(LinkId, SlotName),
+    UnexistingSlot(SlotId),
+    SlotOccupied(SlotId),
 }
 
 impl Definition {
@@ -109,9 +110,12 @@ impl Definition {
                     .contains_key(&to_parent_slot.1)
                 {
                     return Err(ChangeError::UnexistingSlot(
-                        to_parent_slot.0,
-                        to_parent_slot.1,
+                        to_parent_slot
                     ));
+                }
+                if self.joints.iter().any(|(a, _j, b)| to_parent_slot == *a || to_parent_slot == *b)
+                {
+                    return Err(ChangeError::SlotOccupied(to_parent_slot));
                 }
 
                 self.last_link_id += 1;
@@ -178,8 +182,8 @@ impl Definition {
         // set
     }
 
-    pub fn has_link(&self, lr: LinkId) -> bool {
-        true
+    pub fn has_link(&self, link_id: LinkId) -> bool {
+        self.links().contains(&link_id)
     }
 
     pub fn links(&self) -> Vec<LinkId> {
@@ -285,7 +289,7 @@ mod test {
             joint: Joint::Fixed,
             local_slot_name: 'p',
         });
-        assert_eq!(res, Err(ChangeError::UnexistingSlot(0, 'q')));
+        assert_eq!(res, Err(ChangeError::UnexistingSlot(SlotId(0, 'q'))));
     }
 
     #[test]
@@ -314,10 +318,32 @@ mod test {
         assert_eq!(t, Transform::from_translation(4.0 * UP))
     }
 
+    #[test]
+    fn add_two_links_to_the_same_slot_fails() {
+        let mut s = Definition::new(arm_base_link());
+        s.apply(Change::Add {
+            link: l_link(),
+            to_parent_slot: SlotId(0, 'n'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        })
+        .expect("Failed to add first l_link");
+
+        let res = s.apply(Change::Add {
+            link: l_link(),
+            to_parent_slot: SlotId(0, 'n'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        });
+        assert_eq!(res, Err(ChangeError::SlotOccupied(SlotId(0, 'n'))));
+
+        assert!(!s.has_link(2));
+        assert_eq!(s.links(), vec![0, 1]);
+
+    }
+
     // # TODO
     // ## Fixed Joint
-    // - add_multiple_links_with_fixed_joint
-    // - add_two_links_to_the_same_slot_fails
     // - remove_link0_fails
     // ## Twisting Joint
     // - ...
