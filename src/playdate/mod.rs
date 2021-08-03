@@ -4,6 +4,7 @@ use bevy::{prelude::*, utils::HashMap};
 mod skeleton;
 mod skeleton_instance;
 mod skeleton_editor;
+mod xxx;
 
 // use skeleton_editor::SkeletonEditor;
 
