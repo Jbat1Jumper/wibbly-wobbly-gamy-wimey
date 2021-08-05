@@ -58,45 +58,72 @@ mod take_2 {
         kind: SKind,
     }
 
-    struct CreateACommand {
+    struct InstanceAnACommand {
         a_ref: ARef,
         root: Entity,
     }
 
     #[derive(Debug)]
-    enum CreateACommandError {
-        Fetch(Entity, FetchError),
-        Create(Entity, ACreateError),
+    enum InstanceAnACommandError {
+        DuringFetch(Entity, FetchError),
+        Instancing(Entity, ErrorInstancingAnA),
     }
 
-    impl Command for CreateACommand {
+    impl Command for InstanceAnACommand {
         fn write(self: Box<Self>, world: &mut World) {
             fetch(&self.a_ref, world)
-                .map_err(|err| CreateACommandError::Fetch(self.root, err))
+                .map_err(|err| InstanceAnACommandError::DuringFetch(self.root, err))
                 .and_then(|a: A| {
                     a.create(self.root, world)
-                        .map_err(|err| CreateACommandError::Create(self.root, err))
+                        .map_err(|err| InstanceAnACommandError::Instancing(self.root, err))
                 })
                 .unwrap_or_else(|err| {
                     let mut errors = world
-                        .get_resource_mut::<Vec<CreateACommandError>>()
+                        .get_resource_mut::<Vec<InstanceAnACommandError>>()
                         .unwrap();
                     errors.push(err);
                 });
         }
     }
 
+    trait W {
+        type Id;
+
+        fn create_an_y(&mut self, y: Y, root: Self::Id) -> Result<(), YCreateError>;
+    }
+
+    impl W for World {
+        type Id = Entity;
+        fn create_an_y(&mut self, y: Y, root: Self::Id) -> Result<(), YCreateError> {
+            todo!()
+        }
+    }
+
+    trait WAux {
+        fn create_an_x(&mut self, x: Box<dyn X>, root: Entity);
+        fn create_an_a(&mut self, a: A, root: Entity);
+    }
+
+    impl WAux for World {
+        fn create_an_x(&mut self, x: Box<dyn X>, root: Entity) {
+            todo!()
+        }
+        fn create_an_a(&mut self, a: A, root: Entity) {
+            todo!()
+        }
+    }
+
     #[derive(Debug)]
-    enum ACreateError {
-        X(XCreateError),
-        Y(YCreateError),
+    enum ErrorInstancingAnA {
+        OfTypeX(XCreateError),
+        OfTypeY(YCreateError),
     }
 
     impl A {
-        fn create(&self, root: Entity, world: &mut World) -> Result<(), ACreateError> {
+        fn create(&self, root: Entity, world: &mut World) -> Result<(), ErrorInstancingAnA> {
             match self {
-                A::X(x) => x.create(root, world).map_err(ACreateError::X),
-                A::Y(y) => y.create(root, world).map_err(ACreateError::Y),
+                A::X(x) => x.create(root, world).map_err(ErrorInstancingAnA::OfTypeX),
+                A::Y(y) => y.create(root, world).map_err(ErrorInstancingAnA::OfTypeY),
             }
         }
     }
@@ -111,7 +138,7 @@ mod take_2 {
     enum YCreateError {
         Fetch(FetchError),
         GetSs(GetSsError),
-        CreatingRoot(Box<ACreateError>),
+        CreatingRoot(Box<ErrorInstancingAnA>),
         NoCforS(S),
         CreatingC(S, Entity, CCreateError),
     }
