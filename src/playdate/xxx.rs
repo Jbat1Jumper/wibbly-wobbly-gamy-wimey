@@ -71,23 +71,18 @@ mod take_2 {
 
     impl Command for CreateACommand {
         fn write(self: Box<Self>, world: &mut World) {
-            match fetch(&self.a_ref, world) {
-                Err(err) => {
+            fetch(&self.a_ref, world)
+                .map_err(|err| CreateACommandError::Fetch(self.root, err))
+                .and_then(|a: A| {
+                    a.create(self.root, world)
+                        .map_err(|err| CreateACommandError::Create(self.root, err))
+                })
+                .unwrap_or_else(|err| {
                     let mut errors = world
                         .get_resource_mut::<Vec<CreateACommandError>>()
                         .unwrap();
-                    errors.push(CreateACommandError::Fetch(self.root, err));
-                }
-                Ok(a) => match a.create(self.root, world) {
-                    Err(err) => {
-                        let mut errors = world
-                            .get_resource_mut::<Vec<CreateACommandError>>()
-                            .unwrap();
-                        errors.push(CreateACommandError::Create(self.root, err));
-                    }
-                    Ok(()) => {}
-                },
-            }
+                    errors.push(err);
+                });
         }
     }
 
