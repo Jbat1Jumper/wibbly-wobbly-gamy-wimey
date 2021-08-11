@@ -63,40 +63,42 @@ mod take_2 {
         root: Entity,
     }
 
-    #[derive(Debug)]
-    enum InstanceAnACommandError {
-        DuringFetch(Entity, FetchError),
-        Instancing(Entity, ErrorInstancingAnA),
-    }
-
     impl Command for InstanceAnACommand {
         fn write(self: Box<Self>, world: &mut World) {
             fetch(&self.a_ref, world)
-                .map_err(|err| InstanceAnACommandError::DuringFetch(self.root, err))
+                .map_err(ErrorInstancingAnA::DuringFetch)
                 .and_then(|a: A| {
                     a.create(self.root, world)
-                        .map_err(|err| InstanceAnACommandError::Instancing(self.root, err))
                 })
                 .unwrap_or_else(|err| {
                     let mut errors = world
-                        .get_resource_mut::<Vec<InstanceAnACommandError>>()
+                        .get_resource_mut::<Vec<(Entity, ErrorInstancingAnA)>>()
                         .unwrap();
-                    errors.push(err);
+                    errors.push((self.root, err));
                 });
         }
     }
 
-    trait W {
-        type Id;
+    type AKind = String;
 
-        fn create_an_y(&mut self, y: Y, root: Self::Id) -> Result<(), YCreateError>;
+    struct AInfo {
+        is_x: bool,
+        kind: AKind,
     }
 
-    impl W for World {
-        type Id = Entity;
-        fn create_an_y(&mut self, y: Y, root: Self::Id) -> Result<(), YCreateError> {
-            todo!()
-        }
+    trait W1 {
+        fn list_a_refs(&self) -> Vec<ARef>;
+        fn a_ref_info(&self, a_ref: &ARef) -> AInfo;
+        fn satisfies(&self, a_kind: &AKind, s_kind: &SKind) -> bool;
+    }
+
+    trait W2 {
+        fn alloc(&mut self) -> Entity;
+        fn build(&mut self, a_ref: &ARef, root: &Entity) -> Result<(), ErrorInstancingAnA>;
+        fn destroy(&mut self, root: &Entity);
+        fn free(&mut self, root: Entity);
+
+        fn get_ss(&self, root: &Entity) -> Result<Vec<(Entity, S)>, GetSsError>;
     }
 
     trait WAux {
@@ -115,6 +117,7 @@ mod take_2 {
 
     #[derive(Debug)]
     enum ErrorInstancingAnA {
+        DuringFetch(FetchError),
         OfTypeX(XCreateError),
         OfTypeY(YCreateError),
     }
