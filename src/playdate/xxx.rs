@@ -230,3 +230,104 @@ mod take_2 {
         todo!()
     }
 }
+
+
+mod take_3 {
+    use std::collections::HashMap;
+
+    type SlotName = String;
+    type SlotKind = String;
+
+    struct Block {
+        kind: SlotKind,
+        slots: HashMap<SlotName, SlotKind>,
+    }
+
+    enum Artifact {
+        Block(Block),
+        Structure(Structure),
+    }
+
+    type ARef = String;
+
+    struct Structure {
+        a_ref: ARef,
+        c: HashMap<SlotName, Connection>,
+    }
+
+    enum Connection {
+        Structure(Structure),
+        Slot(SlotName),
+    }
+
+
+    trait Model {
+        fn set(&mut self, aref: ARef, artifact: Artifact);
+        fn remove(&mut self, aref: ARef);
+
+        fn get(&self, aref: ARef) -> Option<&Artifact>;
+        fn list(&self) -> Vec<ARef>;
+
+
+        fn is_valid(&self) -> bool {
+            todo!()
+        }
+
+        fn dependencies(&self, aref: ARef) -> Vec<ARef> {
+            todo!()
+        }
+
+        fn dependents(&self, aref: ARef) -> Vec<ARef> {
+            todo!()
+        }
+
+        fn union<ModelPrime: Model>(&self, other_model: ModelPrime) -> InMemoryModel {
+            todo!()
+        }
+    }
+
+    type Location = Vec<SlotName>;
+
+    impl Structure {
+        fn swap(&mut self, target: Location, aref: ARef) {
+            todo!();
+        }
+
+        fn replace(&mut self, target: Location, new_structure: Structure) {
+            todo!();
+        }
+
+        fn connect(&mut self, target: Location, slot_name: SlotName, connection: Connection) {
+            todo!();
+        }
+    }
+
+    type InMemoryModel = HashMap<ARef, Artifact>;
+
+    impl Model for InMemoryModel {
+        fn set(&mut self, aref: ARef, artifact: Artifact) {
+            self.insert(aref, artifact);
+        }
+
+        fn remove(&mut self, aref: ARef) {
+            self.remove(&aref);
+        }
+
+        fn get(&self, aref: ARef) -> Option<&Artifact> {
+            self.get(&aref)
+        }
+        fn list(&self) -> Vec<ARef> {
+            self.keys().cloned().collect()
+        }
+    }
+
+    #[test]
+    fn aaa() {
+        let mut model = InMemoryModel::new();
+        model.set("a".into(), Artifact::Block(Block {
+            kind: "A".into(),
+            slots: HashMap::new(),
+        }));
+        assert!(model.is_valid())
+    }
+}
