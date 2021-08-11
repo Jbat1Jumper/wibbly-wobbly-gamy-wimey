@@ -25,31 +25,37 @@ pub struct Slot {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+// should be private
 pub struct Link {
     pub slots: HashMap<SlotName, Slot>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Change {
-    Replace {
-        link: LinkId,
-        with: Link,
-    },
     Add {
         link: Link,
         to_parent_slot: SlotId,
         joint: Joint,
         local_slot_name: SlotName,
     },
+    ReplaceLink {
+        at: LinkId,
+        with: Link,
+    },
     ReplaceJoint {
         at: SlotId,
         with: Joint,
     },
-    Deatach {
+    Cut {
         from: SlotId,
     },
-    RemoveLink {
+    MoveLink {
         at: SlotId,
+        to: SlotId,
+    },
+    CutAndSplice {
+        from: SlotId,
+        to: SlotId,
     },
 }
 
@@ -109,11 +115,12 @@ impl Definition {
                     .slots
                     .contains_key(&to_parent_slot.1)
                 {
-                    return Err(ChangeError::UnexistingSlot(
-                        to_parent_slot
-                    ));
+                    return Err(ChangeError::UnexistingSlot(to_parent_slot));
                 }
-                if self.joints.iter().any(|(a, _j, b)| to_parent_slot == *a || to_parent_slot == *b)
+                if self
+                    .joints
+                    .iter()
+                    .any(|(a, _j, b)| to_parent_slot == *a || to_parent_slot == *b)
                 {
                     return Err(ChangeError::SlotOccupied(to_parent_slot));
                 }
@@ -198,7 +205,23 @@ impl Definition {
         if origin_link_id == target_link_id {
             Transform::identity()
         } else {
-            Transform::from_translation(2.0 * UP) * self.get_link_transform_from(origin_link_id + 1, target_link_id)
+            let translation_to_next = {
+                let origin_link = self.links[&origin_link_id].clone();
+                // Get shortest path P to target T from origin O
+                // Get next link N in P
+                // Get the pair of slots (with the joint) that connect the two links
+                // Calculate the transform
+                //   (now can just use the slot name to see if is 'l' or 'r')
+                if true {
+                    todo!("Implement what's above")
+                } else {
+                    Transform::from_translation(2.0 * UP)
+                }
+            };
+
+            // TODO: change this implementation to be an iteration over the links in P instead of
+            // a recursion
+            translation_to_next * self.get_link_transform_from(origin_link_id + 1, target_link_id)
         }
     }
 }
@@ -215,29 +238,52 @@ const LEFT: Vec3 = Vec3::X;
 const FORWARD: Vec3 = Vec3::Y;
 const UP: Vec3 = Vec3::Z;
 
-fn arm_base_link() -> Link {
-    Link {
-        slots: hashmap! {
-            'n' => Slot {
-                position: 1.0 * UP ,
-                orientation: Quat::default(),
-            },
-        },
-    }
-}
+mod link {
+    use super::*;
 
-fn l_link() -> Link {
-    Link {
-        slots: hashmap! {
-            'p' => Slot {
-                position: 1.0 * UP,
-                orientation: Quat::default(),
+    pub fn arm_base() -> Link {
+        Link {
+            slots: hashmap! {
+                'n' => Slot {
+                    position: 1.0 * UP ,
+                    orientation: Quat::default(),
+                },
             },
-            'n' => Slot {
-                position: -1.0 * UP,
-                orientation: Quat::default(), // rotate
+        }
+    }
+
+    pub fn l_link() -> Link {
+        Link {
+            slots: hashmap! {
+                'p' => Slot {
+                    position: -1.0 * UP,
+                    orientation: Quat::default(),
+                },
+                'n' => Slot {
+                    position: 1.0 * UP,
+                    orientation: Quat::default(), // rotate
+                },
             },
-        },
+        }
+    }
+
+    pub fn t_link() -> Link {
+        Link {
+            slots: hashmap! {
+                'p' => Slot {
+                    position: -1.0 * UP,
+                    orientation: Quat::default(),
+                },
+                'l' => Slot {
+                    position: 1.0 * UP +1.0 * LEFT,
+                    orientation: Quat::default(), // rotate
+                },
+                'r' => Slot {
+                    position: 1.0 * UP -1.0 * LEFT,
+                    orientation: Quat::default(), // rotate
+                },
+            },
+        }
     }
 }
 
@@ -247,7 +293,7 @@ mod test {
 
     #[test]
     fn assert_link0_transform_is_identity() {
-        let s = Definition::new(arm_base_link());
+        let s = Definition::new(link::arm_base());
         assert!(s.has_link(0));
         assert_eq!(s.links(), vec![0]);
 
@@ -255,11 +301,11 @@ mod test {
         assert_eq!(t, Transform::identity())
     }
 
-    #[test]
+    #[test] #[ignore]
     fn can_add_link_with_fixed_joint() {
-        let mut s = Definition::new(arm_base_link());
+        let mut s = Definition::new(link::arm_base());
         s.apply(Change::Add {
-            link: l_link(),
+            link: link::l_link(),
             to_parent_slot: SlotId(0, 'n'),
             joint: Joint::Fixed,
             local_slot_name: 'p',
@@ -274,9 +320,9 @@ mod test {
 
     #[test]
     fn add_link_to_unexisting_slot_fails() {
-        let mut s = Definition::new(arm_base_link());
+        let mut s = Definition::new(link::arm_base());
         let res = s.apply(Change::Add {
-            link: l_link(),
+            link: link::l_link(),
             to_parent_slot: SlotId(4, 'n'),
             joint: Joint::Fixed,
             local_slot_name: 'p',
@@ -284,7 +330,7 @@ mod test {
         assert_eq!(res, Err(ChangeError::UnexistingLink(4)));
 
         let res = s.apply(Change::Add {
-            link: l_link(),
+            link: link::l_link(),
             to_parent_slot: SlotId(0, 'q'),
             joint: Joint::Fixed,
             local_slot_name: 'p',
@@ -292,11 +338,11 @@ mod test {
         assert_eq!(res, Err(ChangeError::UnexistingSlot(SlotId(0, 'q'))));
     }
 
-    #[test]
+    #[test] #[ignore]
     fn add_multiple_links_with_fixed_joint() {
-        let mut s = Definition::new(arm_base_link());
+        let mut s = Definition::new(link::arm_base());
         s.apply(Change::Add {
-            link: l_link(),
+            link: link::l_link(),
             to_parent_slot: SlotId(0, 'n'),
             joint: Joint::Fixed,
             local_slot_name: 'p',
@@ -304,7 +350,7 @@ mod test {
         .expect("Failed to add first l_link");
 
         s.apply(Change::Add {
-            link: l_link(),
+            link: link::l_link(),
             to_parent_slot: SlotId(1, 'n'),
             joint: Joint::Fixed,
             local_slot_name: 'p',
@@ -315,14 +361,14 @@ mod test {
         assert_eq!(s.links(), vec![0, 1, 2]);
 
         let t = s.get_link_transform(2);
-        assert_eq!(t, Transform::from_translation(4.0 * UP))
+        assert_eq!(t, Transform::from_translation(4.0 * UP));
     }
 
     #[test]
     fn add_two_links_to_the_same_slot_fails() {
-        let mut s = Definition::new(arm_base_link());
+        let mut s = Definition::new(link::arm_base());
         s.apply(Change::Add {
-            link: l_link(),
+            link: link::l_link(),
             to_parent_slot: SlotId(0, 'n'),
             joint: Joint::Fixed,
             local_slot_name: 'p',
@@ -330,7 +376,7 @@ mod test {
         .expect("Failed to add first l_link");
 
         let res = s.apply(Change::Add {
-            link: l_link(),
+            link: link::l_link(),
             to_parent_slot: SlotId(0, 'n'),
             joint: Joint::Fixed,
             local_slot_name: 'p',
@@ -339,16 +385,52 @@ mod test {
 
         assert!(!s.has_link(2));
         assert_eq!(s.links(), vec![0, 1]);
+    }
 
+    #[test] #[ignore]
+    fn add_t_link() {
+        let mut s = Definition::new(link::arm_base());
+        s.apply(Change::Add {
+            link: link::t_link(),
+            to_parent_slot: SlotId(0, 'n'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        })
+        .expect("Failed to add t_link");
+        s.apply(Change::Add {
+            link: link::t_link(),
+            to_parent_slot: SlotId(1, 'l'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        })
+        .expect("Failed to add left l_link");
+        s.apply(Change::Add {
+            link: link::t_link(),
+            to_parent_slot: SlotId(1, 'r'),
+            joint: Joint::Fixed,
+            local_slot_name: 'p',
+        })
+        .expect("Failed to add right l_link");
+
+        assert_eq!(s.links(), vec![0, 1, 2, 3]);
+
+        let t = s.get_link_transform(2);
+        assert_eq!(t, Transform::from_translation(2.0 * UP + 2.0 * LEFT));
+
+        let t = s.get_link_transform(3);
+        assert_eq!(t, Transform::from_translation(2.0 * UP - 2.0 * LEFT));
     }
 
     // # TODO
     // ## Fixed Joint
-    // - remove_link0_fails
+    // - using_a_t_link_
     // ## Twisting Joint
     // - ...
     // ## Rotational Joint
     // - ...
-    // ## t_link
     // - ...
+    // ## Replace link and joint
+    // ## Cut
+    // ## Move link
+    // -
 }
