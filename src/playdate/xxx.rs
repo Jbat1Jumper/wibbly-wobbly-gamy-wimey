@@ -67,9 +67,7 @@ mod take_2 {
         fn write(self: Box<Self>, world: &mut World) {
             fetch(&self.a_ref, world)
                 .map_err(ErrorInstancingAnA::DuringFetch)
-                .and_then(|a: A| {
-                    a.create(self.root, world)
-                })
+                .and_then(|a: A| a.create(self.root, world))
                 .unwrap_or_else(|err| {
                     let mut errors = world
                         .get_resource_mut::<Vec<(Entity, ErrorInstancingAnA)>>()
@@ -231,8 +229,9 @@ mod take_2 {
     }
 }
 
-
 mod take_3 {
+    #[macro_use]
+    pub use maplit::hashmap;
     use std::collections::HashMap;
 
     type SlotName = String;
@@ -260,14 +259,12 @@ mod take_3 {
         Slot(SlotName),
     }
 
-
     trait Model {
         fn set(&mut self, aref: ARef, artifact: Artifact);
         fn remove(&mut self, aref: ARef);
 
         fn get(&self, aref: ARef) -> Option<&Artifact>;
         fn list(&self) -> Vec<ARef>;
-
 
         fn is_valid(&self) -> bool {
             todo!()
@@ -322,12 +319,193 @@ mod take_3 {
     }
 
     #[test]
-    fn aaa() {
+    fn empty_model_is_valid() {
         let mut model = InMemoryModel::new();
-        model.set("a".into(), Artifact::Block(Block {
-            kind: "A".into(),
-            slots: HashMap::new(),
-        }));
-        assert!(model.is_valid())
+        model.set(
+            "a".into(),
+            Artifact::Block(Block {
+                kind: "A".into(),
+                slots: HashMap::new(),
+            }),
+        );
+        assert!(model.is_valid());
+    }
+
+    #[test]
+    fn a_simple_block() {
+        let mut model = InMemoryModel::new();
+        model.set(
+            "a".into(),
+            Artifact::Block(Block {
+                kind: "A".into(),
+                slots: hashmap! {},
+            }),
+        );
+        assert!(model.is_valid());
+    }
+
+    #[test]
+    fn a_block_with_a_slot() {
+        let mut model = InMemoryModel::new();
+        model.set(
+            "a".into(),
+            Artifact::Block(Block {
+                kind: "A".into(),
+                slots: hashmap! {
+                    String::from("1") => String::from("A")
+                },
+            }),
+        );
+        assert!(model.is_valid());
+    }
+
+    #[test]
+    fn a_structure_depending_on_an_unexistent_artifact() {
+        let mut model = InMemoryModel::new();
+        model.set(
+            "a".into(),
+            Artifact::Structure(Structure {
+                a_ref: "b".into(),
+                c: hashmap! {},
+            }),
+        );
+        assert!(!model.is_valid());
+    }
+
+    #[test]
+    fn a_structure_depending_on_itself() {
+        let mut model = InMemoryModel::new();
+        model.set(
+            "a".into(),
+            Artifact::Structure(Structure {
+                a_ref: "a".into(),
+                c: hashmap! {},
+            }),
+        );
+        assert!(!model.is_valid());
+    }
+
+    #[test]
+    fn mutually_recursive_structures() {
+        let mut model = InMemoryModel::new();
+        model.set(
+            "a".into(),
+            Artifact::Structure(Structure {
+                a_ref: "b".into(),
+                c: hashmap! {},
+            }),
+        );
+        model.set(
+            "b".into(),
+            Artifact::Structure(Structure {
+                a_ref: "a".into(),
+                c: hashmap! {},
+            }),
+        );
+        assert!(!model.is_valid());
+    }
+
+    #[test]
+    fn a_structure_using_a_simple_block() {
+        let mut model = InMemoryModel::new();
+        model.set(
+            "b".into(),
+            Artifact::Block(Block {
+                kind: "B".into(),
+                slots: hashmap! {},
+            }),
+        );
+        model.set(
+            "a".into(),
+            Artifact::Structure(Structure {
+                a_ref: "b".into(),
+                c: hashmap! {},
+            }),
+        );
+        assert!(model.is_valid());
+    }
+
+    fn peano_model() -> InMemoryModel {
+        let mut model = InMemoryModel::new();
+        model.set(
+            "successor".into(),
+            Artifact::Block(Block {
+                kind: "Natural".into(),
+                slots: hashmap! {
+                    String::from("x") => String::from("Natural"),
+                },
+            }),
+        );
+        model.set(
+            "zero".into(),
+            Artifact::Block(Block {
+                kind: "Natural".into(),
+                slots: hashmap! {},
+            }),
+        );
+        model
+    }
+
+    #[test]
+    fn peano_numbers() {
+        let mut model = peano_model();
+        model.set(
+            "number_2".into(),
+            Artifact::Structure(Structure {
+                a_ref: "successor".into(),
+                c: hashmap! {
+                    String::from("x") => Connection::Structure(Structure {
+                        a_ref: "successor".into(),
+                        c: hashmap!{
+                            String::from("x") => Connection::Structure(Structure {
+                                a_ref: "zero".into(),
+                                c: hashmap!{}
+                            })
+                        }
+                    })
+                },
+            }),
+        );
+        assert!(model.is_valid());
+        todo!("Add some kind of evaluation function to this and assert that this equals 2");
+    }
+
+    #[test]
+    fn two_and_two_is_four() {
+        let mut model = peano_model();
+        model.set(
+            "plus_2".into(),
+            Artifact::Structure(Structure {
+                a_ref: "successor".into(),
+                c: hashmap! {
+                    String::from("x") => Connection::Structure(Structure {
+                        a_ref: "successor".into(),
+                        c: hashmap!{
+                            String::from("x") => Connection::Slot("x".into())
+                        }
+                    })
+                },
+            }),
+        );
+        model.set(
+            "number_4".into(),
+            Artifact::Structure(Structure {
+                a_ref: "plus_two".into(),
+                c: hashmap! {
+                    String::from("x") => Connection::Structure(Structure {
+                        a_ref: "plus_two".into(),
+                        c: hashmap!{
+                            String::from("x") => Connection::Structure(Structure {
+                                a_ref: "zero".into(),
+                                c: hashmap!{}
+                            })
+                        }
+                    })
+                },
+            }),
+        );
+        assert!(model.is_valid());
+        todo!("Use an evaluation function to assert that this equals 4");
+        todo!("Assert that structure expansion equals to an equivalent structure depending only on blocks");
     }
 }
