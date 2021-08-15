@@ -274,16 +274,25 @@ mod take_3 {
         }
 
         fn kind_of(&self, aref: ARef) -> Result<SlotKind, ()> {
-            match self.get(aref).ok_or(())? {
+            match self.get(aref.clone()).ok_or(())? {
                 Artifact::Block(ref block) => Ok(block.kind.clone()),
-                Artifact::Structure(structure) => self.kind_of(structure.a_ref.clone()),
+                Artifact::Structure(structure) => 
+                {
+                    if aref == structure.a_ref {
+                        return Err(())
+                    }
+                    self.kind_of(structure.a_ref.clone())
+                },
             }
         }
 
         fn slots_of(&self, aref: ARef) -> Result<HashMap<SlotName, SlotKind>, ()> {
-            match self.get(aref).unwrap() {
+            match self.get(aref.clone()).unwrap() {
                 Artifact::Block(ref block) => Ok(block.slots.clone()),
                 Artifact::Structure(structure) => {
+                    if aref == structure.a_ref {
+                        return Err(())
+                    }
                     let inner_slots = self.slots_of(structure.a_ref.clone())?;
 
                     let mut slots = hashmap! {};
@@ -426,7 +435,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert!(!model.is_all_valid());
+        assert_eq!(model.is_all_valid(), false);
 
         assert!(model.list().contains(&String::from("a")));
         assert!(model.get("a".into()).unwrap().composite());
@@ -485,7 +494,6 @@ mod take_3 {
         );
     }
 
-    #[ignore]
     #[test]
     fn a_structure_depending_on_itself() {
         let mut model = empty_test_model();
