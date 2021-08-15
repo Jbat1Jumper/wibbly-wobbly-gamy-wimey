@@ -276,17 +276,20 @@ mod take_3 {
         fn kind_of(&self, aref: ARef) -> Result<SlotKind, ()> {
             self.kind_of_with_breadcrumb(aref, vec![])
         }
-        fn kind_of_with_breadcrumb(&self, aref: ARef, mut breadcrumb: Vec<ARef>) -> Result<SlotKind, ()> {
+        fn kind_of_with_breadcrumb(
+            &self,
+            aref: ARef,
+            mut breadcrumb: Vec<ARef>,
+        ) -> Result<SlotKind, ()> {
             match self.get(aref.clone()).ok_or(())? {
                 Artifact::Block(ref block) => Ok(block.kind.clone()),
-                Artifact::Structure(structure) => 
-                {
+                Artifact::Structure(structure) => {
                     breadcrumb.push(aref);
                     if breadcrumb.contains(&structure.a_ref) {
-                        return Err(())
+                        return Err(());
                     }
                     self.kind_of_with_breadcrumb(structure.a_ref.clone(), breadcrumb)
-                },
+                }
             }
         }
 
@@ -295,27 +298,37 @@ mod take_3 {
                 Artifact::Block(ref block) => Ok(block.slots.clone()),
                 Artifact::Structure(structure) => {
                     if aref == structure.a_ref {
-                        return Err(())
+                        return Err(());
                     }
-                    let inner_slots = self.slots_of(structure.a_ref.clone())?;
-
-                    let mut slots = hashmap! {};
-
-                    for (slot_name, slot_kind) in inner_slots {
-                        match structure.c.get(&slot_name) {
-                            Some(c) => match c {
-                                Connection::Slot(outer_slot_name) => {
-                                    slots.insert(outer_slot_name.clone(), slot_kind.clone());
-                                }
-                                Connection::Structure(_structure) => todo!(),
-                            },
-                            None => return Err(()),
-                        }
-                    }
-
-                    Ok(slots)
+                    self.slots_of_structure(structure)
                 }
             }
+        }
+        fn slots_of_structure(
+            &self,
+            structure: &Structure,
+        ) -> Result<HashMap<SlotName, SlotKind>, ()> {
+            let inner_slots = self.slots_of(structure.a_ref.clone())?;
+
+            let mut slots = hashmap! {};
+
+            for (slot_name, slot_kind) in inner_slots {
+                match structure.c.get(&slot_name) {
+                    Some(c) => match c {
+                        Connection::Slot(outer_slot_name) => {
+                            slots.insert(outer_slot_name.clone(), slot_kind.clone());
+                        }
+                        Connection::Structure(child_structure) => {
+                            for (slot_name, slot_kind) in self.slots_of_structure(child_structure)? {
+                                slots.insert(slot_name, slot_kind);
+                            }
+                        },
+                    },
+                    None => return Err(()),
+                }
+            }
+
+            Ok(slots)
         }
 
         fn dependencies(&self, aref: ARef) -> Vec<ARef> {
@@ -552,7 +565,6 @@ mod take_3 {
         model
     }
 
-    #[ignore]
     #[test]
     fn peano_numbers() {
         let mut model = peano_model();
