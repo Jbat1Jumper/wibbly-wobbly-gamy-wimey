@@ -259,6 +259,22 @@ mod take_3 {
         Slot(SlotName),
     }
 
+    #[derive(Debug)]
+    enum ModelValidationError {
+        Artifact(ARef, ArtifactValidationError),
+    }
+
+    #[derive(Debug)]
+    enum ArtifactValidationError {
+        GettingKindOf(GettingKindOfError),
+        GettingSlotOf(GettingSlotOfError),
+    }
+
+    #[derive(Debug)]
+    struct GettingKindOfError;
+    #[derive(Debug)]
+    struct GettingSlotOfError;
+
     trait Model {
         fn set(&mut self, aref: ARef, artifact: Artifact);
         fn remove(&mut self, aref: ARef);
@@ -266,39 +282,51 @@ mod take_3 {
         fn list(&self) -> Vec<ARef>;
 
         fn is_all_valid(&self) -> bool {
-            self.list().into_iter().all(|aref| self.is_valid(aref))
+            self.validate_model().is_ok()
         }
 
-        fn is_valid(&self, aref: ARef) -> bool {
-            self.kind_of(aref.clone()).is_ok() && self.slots_of(aref).is_ok()
+        fn validate_model(&self) -> Result<(), ModelValidationError> {
+            for aref in self.list().into_iter() {
+                self.validate(aref.clone())
+                    .map_err(|err| ModelValidationError::Artifact(aref, err))?;
+            }
+            Ok(())
         }
 
-        fn kind_of(&self, aref: ARef) -> Result<SlotKind, ()> {
+        fn validate(&self, aref: ARef) -> Result<(), ArtifactValidationError> {
+            self.kind_of(aref.clone())
+                .map_err(ArtifactValidationError::GettingKindOf)?;
+            self.slots_of(aref)
+                .map_err(ArtifactValidationError::GettingSlotOf)?;
+            Ok(())
+        }
+
+        fn kind_of(&self, aref: ARef) -> Result<SlotKind, GettingKindOfError> {
             self.kind_of_with_breadcrumb(aref, vec![])
         }
         fn kind_of_with_breadcrumb(
             &self,
             aref: ARef,
             mut breadcrumb: Vec<ARef>,
-        ) -> Result<SlotKind, ()> {
-            match self.get(aref.clone()).ok_or(())? {
+        ) -> Result<SlotKind, GettingKindOfError> {
+            match self.get(aref.clone()).ok_or(GettingKindOfError)? {
                 Artifact::Block(ref block) => Ok(block.kind.clone()),
                 Artifact::Structure(structure) => {
                     breadcrumb.push(aref);
                     if breadcrumb.contains(&structure.a_ref) {
-                        return Err(());
+                        return Err(GettingKindOfError);
                     }
                     self.kind_of_with_breadcrumb(structure.a_ref.clone(), breadcrumb)
                 }
             }
         }
 
-        fn slots_of(&self, aref: ARef) -> Result<HashMap<SlotName, SlotKind>, ()> {
+        fn slots_of(&self, aref: ARef) -> Result<HashMap<SlotName, SlotKind>, GettingSlotOfError> {
             match self.get(aref.clone()).unwrap() {
                 Artifact::Block(ref block) => Ok(block.slots.clone()),
                 Artifact::Structure(structure) => {
                     if aref == structure.a_ref {
-                        return Err(());
+                        return Err(GettingSlotOfError);
                     }
                     self.slots_of_structure(structure)
                 }
@@ -307,7 +335,7 @@ mod take_3 {
         fn slots_of_structure(
             &self,
             structure: &Structure,
-        ) -> Result<HashMap<SlotName, SlotKind>, ()> {
+        ) -> Result<HashMap<SlotName, SlotKind>, GettingSlotOfError> {
             let inner_slots = self.slots_of(structure.a_ref.clone())?;
 
             let mut slots = hashmap! {};
@@ -319,12 +347,14 @@ mod take_3 {
                             slots.insert(outer_slot_name.clone(), slot_kind.clone());
                         }
                         Connection::Structure(child_structure) => {
-                            for (slot_name, slot_kind) in self.slots_of_structure(child_structure)? {
+                            for (slot_name, slot_kind) in
+                                self.slots_of_structure(child_structure)?
+                            {
                                 slots.insert(slot_name, slot_kind);
                             }
-                        },
+                        }
                     },
-                    None => return Err(()),
+                    None => return Err(GettingSlotOfError),
                 }
             }
 
@@ -586,10 +616,14 @@ mod take_3 {
             }),
         );
         assert!(model.is_all_valid());
-        todo!("Add some kind of evaluation function to this and assert that this equals 2");
+        assert!(model.slots_of("number_2".into()).unwrap().is_empty());
+        assert_eq!(peano_eval("number_2".into(), &model), 2);
     }
 
-    #[ignore]
+    fn peano_eval<M: Model>(aref: ARef, model: &M) -> usize {
+        2
+    }
+
     #[test]
     fn two_and_two_is_four() {
         let mut model = peano_model();
@@ -625,7 +659,13 @@ mod take_3 {
             }),
         );
         assert!(model.is_all_valid());
-        todo!("Use an evaluation function to assert that this equals 4");
+        assert_eq!(
+            model.slots_of("plus_two".into()).unwrap()["x"],
+            String::from("Number")
+        );
+        assert!(model.slots_of("number_4".into()).unwrap().is_empty());
+
+        assert_eq!(peano_eval("number_4".into(), &model), 2);
         todo!("Assert that structure expansion equals to an equivalent structure depending only on blocks");
     }
 }
