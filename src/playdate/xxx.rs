@@ -266,9 +266,7 @@ mod take_3 {
         fn list(&self) -> Vec<ARef>;
 
         fn is_all_valid(&self) -> bool {
-            self.list()
-                .into_iter()
-                .all(|aref| self.is_valid(aref))
+            self.list().into_iter().all(|aref| self.is_valid(aref))
         }
 
         fn is_valid(&self, aref: ARef) -> bool {
@@ -276,16 +274,16 @@ mod take_3 {
         }
 
         fn kind_of(&self, aref: ARef) -> Result<SlotKind, ()> {
-            match self.get(aref).unwrap() {
+            match self.get(aref).ok_or(())? {
                 Artifact::Block(ref block) => Ok(block.kind.clone()),
-                Artifact::Structure(_) => Err(()),
+                Artifact::Structure(structure) => self.kind_of(structure.a_ref.clone()),
             }
         }
 
         fn slots_of(&self, aref: ARef) -> Result<HashMap<SlotName, SlotKind>, ()> {
             match self.get(aref).unwrap() {
                 Artifact::Block(ref block) => Ok(block.slots.clone()),
-                Artifact::Structure(_) => Err(()),
+                Artifact::Structure(_) => Ok(hashmap! {}),
             }
         }
 
@@ -306,7 +304,11 @@ mod take_3 {
 
     impl Artifact {
         fn composite(&self) -> bool {
-            false
+            if let Artifact::Structure(_) = self {
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -351,6 +353,7 @@ mod take_3 {
     fn empty_model_is_valid() {
         let mut model = empty_test_model();
         assert!(model.is_all_valid());
+        assert!(model.list().is_empty());
     }
 
     #[test]
@@ -369,6 +372,8 @@ mod take_3 {
 
         let artifact = model.get("a".into()).unwrap();
         assert_eq!(artifact.composite(), false);
+
+        assert!(model.list().contains(&String::from("a")));
     }
 
     #[test]
@@ -389,6 +394,8 @@ mod take_3 {
 
         let artifact = model.get("a".into()).unwrap();
         assert_eq!(artifact.composite(), false);
+
+        assert!(model.list().contains(&String::from("a")));
     }
 
     #[test]
@@ -402,6 +409,32 @@ mod take_3 {
             }),
         );
         assert!(!model.is_all_valid());
+
+        assert!(model.list().contains(&String::from("a")));
+        assert!(model.get("a".into()).unwrap().composite());
+    }
+
+    #[test]
+    fn a_structure_using_a_simple_block() {
+        let mut model = empty_test_model();
+        model.set(
+            "b".into(),
+            Artifact::Block(Block {
+                kind: "B".into(),
+                slots: hashmap! {},
+            }),
+        );
+        model.set(
+            "a".into(),
+            Artifact::Structure(Structure {
+                a_ref: "b".into(),
+                c: hashmap! {},
+            }),
+        );
+        assert!(model.is_all_valid());
+
+        assert_eq!(model.kind_of("a".into()).unwrap(), "B");
+        assert_eq!(model.slots_of("a".into()).unwrap().is_empty(), true);
     }
 
     #[ignore]
@@ -437,27 +470,6 @@ mod take_3 {
             }),
         );
         assert!(!model.is_all_valid());
-    }
-
-    #[ignore]
-    #[test]
-    fn a_structure_using_a_simple_block() {
-        let mut model = empty_test_model();
-        model.set(
-            "b".into(),
-            Artifact::Block(Block {
-                kind: "B".into(),
-                slots: hashmap! {},
-            }),
-        );
-        model.set(
-            "a".into(),
-            Artifact::Structure(Structure {
-                a_ref: "b".into(),
-                c: hashmap! {},
-            }),
-        );
-        assert!(model.is_all_valid());
     }
 
     fn peano_model() -> InMemoryModel {
