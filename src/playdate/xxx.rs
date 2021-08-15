@@ -283,7 +283,25 @@ mod take_3 {
         fn slots_of(&self, aref: ARef) -> Result<HashMap<SlotName, SlotKind>, ()> {
             match self.get(aref).unwrap() {
                 Artifact::Block(ref block) => Ok(block.slots.clone()),
-                Artifact::Structure(_) => Ok(hashmap! {}),
+                Artifact::Structure(structure) => {
+                    let inner_slots = self.slots_of(structure.a_ref.clone())?;
+
+                    let mut slots = hashmap! {};
+
+                    for (slot_name, slot_kind) in inner_slots {
+                        match structure.c.get(&slot_name) {
+                            Some(c) => match c {
+                                Connection::Slot(outer_slot_name) => {
+                                    slots.insert(outer_slot_name.clone(), slot_kind.clone());
+                                }
+                                Connection::Structure(_structure) => todo!(),
+                            },
+                            None => return Err(()),
+                        }
+                    }
+
+                    Ok(slots)
+                }
             }
         }
 
@@ -435,6 +453,36 @@ mod take_3 {
 
         assert_eq!(model.kind_of("a".into()).unwrap(), "B");
         assert_eq!(model.slots_of("a".into()).unwrap().is_empty(), true);
+    }
+
+    #[test]
+    fn a_structure_using_a_simple_block_remapping_slots() {
+        let mut model = empty_test_model();
+        model.set(
+            "b".into(),
+            Artifact::Block(Block {
+                kind: "B".into(),
+                slots: hashmap! {
+                    String::from("80") => String::from("PROTO")
+                },
+            }),
+        );
+        model.set(
+            "a".into(),
+            Artifact::Structure(Structure {
+                a_ref: "b".into(),
+                c: hashmap! {
+                    String::from("80") => Connection::Slot(String::from("9980")),
+                },
+            }),
+        );
+        assert!(model.is_all_valid());
+
+        assert_eq!(model.kind_of("a".into()).unwrap(), "B");
+        assert_eq!(
+            model.slots_of("a".into()).unwrap(),
+            hashmap! {String::from("9980") => String::from("PROTO")}
+        );
     }
 
     #[ignore]
