@@ -271,7 +271,10 @@ mod take_3 {
     }
 
     #[derive(Debug)]
-    struct GettingKindOfError;
+    enum GettingKindOfError {
+        Unexistent(Vec<ARef>, ARef),
+        RecursionDetected(Vec<ARef>, ARef),
+    }
     #[derive(Debug)]
     struct GettingSlotOfError;
 
@@ -309,12 +312,18 @@ mod take_3 {
             aref: ARef,
             mut breadcrumb: Vec<ARef>,
         ) -> Result<SlotKind, GettingKindOfError> {
-            match self.get(aref.clone()).ok_or(GettingKindOfError)? {
+            match self
+                .get(aref.clone())
+                .ok_or_else(|| GettingKindOfError::Unexistent(breadcrumb.clone(), aref.clone()))?
+            {
                 Artifact::Block(ref block) => Ok(block.kind.clone()),
                 Artifact::Structure(structure) => {
                     breadcrumb.push(aref);
                     if breadcrumb.contains(&structure.a_ref) {
-                        return Err(GettingKindOfError);
+                        return Err(GettingKindOfError::RecursionDetected(
+                            breadcrumb.clone(),
+                            structure.a_ref.clone(),
+                        ));
                     }
                     self.kind_of_with_breadcrumb(structure.a_ref.clone(), breadcrumb)
                 }
@@ -426,7 +435,7 @@ mod take_3 {
     #[test]
     fn empty_model_is_valid() {
         let mut model = empty_test_model();
-        assert!(model.is_all_valid());
+        model.validate_model().unwrap();
         assert!(model.list().is_empty());
     }
 
@@ -440,7 +449,7 @@ mod take_3 {
                 slots: hashmap! {},
             }),
         );
-        assert!(model.is_all_valid());
+        model.validate_model().unwrap();
         assert_eq!(model.kind_of("a".into()).unwrap(), "A");
         assert_eq!(model.slots_of("a".into()).unwrap(), hashmap! {});
 
@@ -462,7 +471,7 @@ mod take_3 {
                 },
             }),
         );
-        assert!(model.is_all_valid());
+        model.validate_model().unwrap();
         assert_eq!(model.kind_of("a".into()).unwrap(), "A");
         assert_eq!(model.slots_of("a".into()).unwrap()["1"], "A");
 
@@ -482,7 +491,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert_eq!(model.is_all_valid(), false);
+        model.validate_model().expect_err("Should fail");
 
         assert!(model.list().contains(&String::from("a")));
         assert!(model.get("a".into()).unwrap().composite());
@@ -505,7 +514,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert!(model.is_all_valid());
+        model.validate_model().unwrap();
 
         assert_eq!(model.kind_of("a".into()).unwrap(), "B");
         assert_eq!(model.slots_of("a".into()).unwrap().is_empty(), true);
@@ -532,7 +541,7 @@ mod take_3 {
                 },
             }),
         );
-        assert!(model.is_all_valid());
+        model.validate_model().unwrap();
 
         assert_eq!(model.kind_of("a".into()).unwrap(), "B");
         assert_eq!(
@@ -551,7 +560,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert!(!model.is_all_valid());
+        model.validate_model().expect_err("Should fail");
     }
 
     #[test]
@@ -571,7 +580,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert!(!model.is_all_valid());
+        model.validate_model().expect_err("Should fail");
     }
 
     fn peano_model() -> InMemoryModel {
@@ -615,7 +624,7 @@ mod take_3 {
                 },
             }),
         );
-        assert!(model.is_all_valid());
+        model.validate_model().unwrap();
         assert!(model.slots_of("number_2".into()).unwrap().is_empty());
         assert_eq!(peano_eval("number_2".into(), &model), 2);
     }
@@ -644,10 +653,10 @@ mod take_3 {
         model.set(
             "number_4".into(),
             Artifact::Structure(Structure {
-                a_ref: "plus_two".into(),
+                a_ref: "plus_2".into(),
                 c: hashmap! {
                     String::from("x") => Connection::Structure(Structure {
-                        a_ref: "plus_two".into(),
+                        a_ref: "plus_2".into(),
                         c: hashmap!{
                             String::from("x") => Connection::Structure(Structure {
                                 a_ref: "zero".into(),
@@ -658,14 +667,15 @@ mod take_3 {
                 },
             }),
         );
-        assert!(model.is_all_valid());
+        model.validate_model().unwrap();
+        assert_eq!(model.slots_of("plus_2".into()).unwrap().keys().count(), 1);
         assert_eq!(
-            model.slots_of("plus_two".into()).unwrap()["x"],
-            String::from("Number")
+            model.slots_of("plus_2".into()).unwrap()["x"],
+            String::from("Natural")
         );
         assert!(model.slots_of("number_4".into()).unwrap().is_empty());
 
-        assert_eq!(peano_eval("number_4".into(), &model), 2);
+        assert_eq!(peano_eval("number_4".into(), &model), 4);
         todo!("Assert that structure expansion equals to an equivalent structure depending only on blocks");
     }
 }
