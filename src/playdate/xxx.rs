@@ -262,25 +262,30 @@ mod take_3 {
     trait Model {
         fn set(&mut self, aref: ARef, artifact: Artifact);
         fn remove(&mut self, aref: ARef);
-
         fn get(&self, aref: ARef) -> Option<&Artifact>;
         fn list(&self) -> Vec<ARef>;
 
-        fn is_valid(&self) -> bool {
-            true
+        fn is_all_valid(&self) -> bool {
+            self.list()
+                .into_iter()
+                .all(|aref| self.is_valid(aref))
+        }
+
+        fn is_valid(&self, aref: ARef) -> bool {
+            self.kind_of(aref.clone()).is_ok() && self.slots_of(aref).is_ok()
         }
 
         fn kind_of(&self, aref: ARef) -> Result<SlotKind, ()> {
             match self.get(aref).unwrap() {
                 Artifact::Block(ref block) => Ok(block.kind.clone()),
-                Artifact::Structure(_) => todo!(),
+                Artifact::Structure(_) => Err(()),
             }
         }
 
         fn slots_of(&self, aref: ARef) -> Result<HashMap<SlotName, SlotKind>, ()> {
             match self.get(aref).unwrap() {
                 Artifact::Block(ref block) => Ok(block.slots.clone()),
-                Artifact::Structure(_) => todo!(),
+                Artifact::Structure(_) => Err(()),
             }
         }
 
@@ -345,7 +350,7 @@ mod take_3 {
     #[test]
     fn empty_model_is_valid() {
         let mut model = empty_test_model();
-        assert!(model.is_valid());
+        assert!(model.is_all_valid());
     }
 
     #[test]
@@ -358,7 +363,7 @@ mod take_3 {
                 slots: hashmap! {},
             }),
         );
-        assert!(model.is_valid());
+        assert!(model.is_all_valid());
         assert_eq!(model.kind_of("a".into()).unwrap(), "A");
         assert_eq!(model.slots_of("a".into()).unwrap(), hashmap! {});
 
@@ -378,7 +383,7 @@ mod take_3 {
                 },
             }),
         );
-        assert!(model.is_valid());
+        assert!(model.is_all_valid());
         assert_eq!(model.kind_of("a".into()).unwrap(), "A");
         assert_eq!(model.slots_of("a".into()).unwrap()["1"], "A");
 
@@ -386,7 +391,6 @@ mod take_3 {
         assert_eq!(artifact.composite(), false);
     }
 
-    #[ignore]
     #[test]
     fn a_structure_depending_on_an_unexistent_artifact() {
         let mut model = empty_test_model();
@@ -397,7 +401,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert!(!model.is_valid());
+        assert!(!model.is_all_valid());
     }
 
     #[ignore]
@@ -411,7 +415,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert!(!model.is_valid());
+        assert!(!model.is_all_valid());
     }
 
     #[ignore]
@@ -432,7 +436,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert!(!model.is_valid());
+        assert!(!model.is_all_valid());
     }
 
     #[ignore]
@@ -453,7 +457,7 @@ mod take_3 {
                 c: hashmap! {},
             }),
         );
-        assert!(model.is_valid());
+        assert!(model.is_all_valid());
     }
 
     fn peano_model() -> InMemoryModel {
@@ -498,7 +502,7 @@ mod take_3 {
                 },
             }),
         );
-        assert!(model.is_valid());
+        assert!(model.is_all_valid());
         todo!("Add some kind of evaluation function to this and assert that this equals 2");
     }
 
@@ -537,7 +541,7 @@ mod take_3 {
                 },
             }),
         );
-        assert!(model.is_valid());
+        assert!(model.is_all_valid());
         todo!("Use an evaluation function to assert that this equals 4");
         todo!("Assert that structure expansion equals to an equivalent structure depending only on blocks");
     }
