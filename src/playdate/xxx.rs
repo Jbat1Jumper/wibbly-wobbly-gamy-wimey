@@ -274,14 +274,18 @@ mod take_3 {
         }
 
         fn kind_of(&self, aref: ARef) -> Result<SlotKind, ()> {
+            self.kind_of_with_breadcrumb(aref, vec![])
+        }
+        fn kind_of_with_breadcrumb(&self, aref: ARef, mut breadcrumb: Vec<ARef>) -> Result<SlotKind, ()> {
             match self.get(aref.clone()).ok_or(())? {
                 Artifact::Block(ref block) => Ok(block.kind.clone()),
                 Artifact::Structure(structure) => 
                 {
-                    if aref == structure.a_ref {
+                    breadcrumb.push(aref);
+                    if breadcrumb.contains(&structure.a_ref) {
                         return Err(())
                     }
-                    self.kind_of(structure.a_ref.clone())
+                    self.kind_of_with_breadcrumb(structure.a_ref.clone(), breadcrumb)
                 },
             }
         }
@@ -507,7 +511,6 @@ mod take_3 {
         assert!(!model.is_all_valid());
     }
 
-    #[ignore]
     #[test]
     fn mutually_recursive_structures() {
         let mut model = empty_test_model();
