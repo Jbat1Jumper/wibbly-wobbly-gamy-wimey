@@ -271,11 +271,17 @@ mod take_3 {
         }
 
         fn kind_of(&self, aref: ARef) -> Result<SlotKind, ()> {
-            Ok(self.get(aref).unwrap().kind())
+            match self.get(aref).unwrap() {
+                Artifact::Block(ref block) => Ok(block.kind.clone()),
+                Artifact::Structure(_) => todo!(),
+            }
         }
 
         fn slots_of(&self, aref: ARef) -> Result<HashMap<SlotName, SlotKind>, ()> {
-            Ok(self.get(aref).unwrap().slots())
+            match self.get(aref).unwrap() {
+                Artifact::Block(ref block) => Ok(block.slots.clone()),
+                Artifact::Structure(_) => todo!(),
+            }
         }
 
         fn dependencies(&self, aref: ARef) -> Vec<ARef> {
@@ -294,22 +300,8 @@ mod take_3 {
     struct Location(Vec<SlotName>);
 
     impl Artifact {
-        fn kind(&self) -> SlotKind {
-            match self {
-                Artifact::Block(ref block) => block.kind.clone(),
-                Artifact::Structure(_) => todo!(),
-            }
-        }
-
         fn composite(&self) -> bool {
             false
-        }
-
-        fn slots(&self) -> HashMap<SlotName, SlotKind> {
-            match self {
-                Artifact::Block(ref block) => block.slots.clone(),
-                Artifact::Structure(_) => todo!(),
-            }
         }
     }
 
@@ -371,9 +363,7 @@ mod take_3 {
         assert_eq!(model.slots_of("a".into()).unwrap(), hashmap! {});
 
         let artifact = model.get("a".into()).unwrap();
-        assert_eq!(artifact.kind(), "A");
         assert_eq!(artifact.composite(), false);
-        assert_eq!(artifact.slots(), hashmap! {});
     }
 
     #[test]
@@ -393,9 +383,7 @@ mod take_3 {
         assert_eq!(model.slots_of("a".into()).unwrap()["1"], "A");
 
         let artifact = model.get("a".into()).unwrap();
-        assert_eq!(artifact.kind(), "A");
         assert_eq!(artifact.composite(), false);
-        assert_eq!(artifact.slots()["1"], "A");
     }
 
     #[ignore]
