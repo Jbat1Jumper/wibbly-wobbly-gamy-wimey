@@ -270,6 +270,14 @@ mod take_3 {
             true
         }
 
+        fn kind_of(&self, aref: ARef) -> Result<SlotKind, ()> {
+            Ok(self.get(aref).unwrap().kind())
+        }
+
+        fn slots_of(&self, aref: ARef) -> Result<HashMap<SlotName, SlotKind>, ()> {
+            Ok(self.get(aref).unwrap().slots())
+        }
+
         fn dependencies(&self, aref: ARef) -> Vec<ARef> {
             todo!()
         }
@@ -359,6 +367,9 @@ mod take_3 {
             }),
         );
         assert!(model.is_valid());
+        assert_eq!(model.kind_of("a".into()).unwrap(), "A");
+        assert_eq!(model.slots_of("a".into()).unwrap(), hashmap! {});
+
         let artifact = model.get("a".into()).unwrap();
         assert_eq!(artifact.kind(), "A");
         assert_eq!(artifact.composite(), false);
@@ -378,6 +389,9 @@ mod take_3 {
             }),
         );
         assert!(model.is_valid());
+        assert_eq!(model.kind_of("a".into()).unwrap(), "A");
+        assert_eq!(model.slots_of("a".into()).unwrap()["1"], "A");
+
         let artifact = model.get("a".into()).unwrap();
         assert_eq!(artifact.kind(), "A");
         assert_eq!(artifact.composite(), false);
