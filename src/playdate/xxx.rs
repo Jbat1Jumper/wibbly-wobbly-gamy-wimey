@@ -1,186 +1,160 @@
-#[cfg(abrakadabra)]
 mod mursten_bevy_plugin {
     use bevy::{ecs::system::Command, prelude::*};
     use std::collections::HashMap;
 
     use super::mursten::*;
 
-    trait Block {
-        fn create_instance(&self, root: Entity, world: &mut World) -> HashMap<String, >;
+    // TODO: This could probably be in another module separated from bevy.
+    // Some things like a trait for a ModelRepository with crud operations and model resolution
+    // algorithms can be used without the bevy application. For instance, implementing a model repository
+    // on top of a distributed network is something agnostic to bevy but directly usable by this
+    // library.
+    #[derive(Debug, Clone, Eq, PartialEq, Hash)]
+    pub struct ModelReference(String);
+    pub fn mr<T: Into<String>>(x: T) -> ModelReference {
+        ModelReference(x.into())
     }
+
+    enum ModelChange {}
+
+    pub trait ModelRepository {
+        fn list_models(&mut self) -> Vec<ModelReference>;
+        fn delete_model(&self, mref: &ModelReference);
+        fn get_model(&self, mref: &ModelReference) -> &dyn Model;
+        fn create_empty_model(&mut self, mref: ModelReference);
+        fn change_model(&mut self, mref: &ModelReference, change: ModelChange);
+    }
+
+    impl ModelRepository for World {
+        fn list_models(&mut self) -> Vec<ModelReference> {
+            todo!()
+        }
+        fn delete_model(&self, mref: &ModelReference) {
+            todo!()
+        }
+        fn get_model(&self, mref: &ModelReference) -> &dyn Model {
+            todo!()
+        }
+        fn create_empty_model(&mut self, mref: ModelReference) {
+            todo!()
+        }
+        fn change_model(&mut self, mref: &ModelReference, change: ModelChange) {
+            todo!()
+        }
+    }
+
+    #[derive(Debug, Clone, Eq, PartialEq)]
+    struct BlockInstanceCreationError(String);
 
     trait Instance {
         fn of_artifact<'a>(&'a self) -> &'a str;
     }
 
     struct CreateInstance {
-        aref: String,
+        aref: ArtifactReference,
+        mref: ModelReference,
         root: Entity,
     }
 
     impl Command for CreateInstance {
         fn write(self: Box<Self>, world: &mut World) {
-            fetch(&self.a_ref, world)
-                .map_err(ErrorInstancingAnA::DuringFetch)
-                .and_then(|a: Artifact| a.create(self.root, world))
-                .unwrap_or_else(|err| {
-                    let mut errors = world
-                        .get_resource_mut::<Vec<(Entity, ErrorInstancingAnA)>>()
-                        .unwrap();
-                    errors.push((self.root, err));
-                });
+            let a = world.get_model(&self.mref).get(&self.aref).unwrap();
+            world.build_artifact(&self.mref, &self.aref, self.root);
         }
     }
 
-    type AKind = String;
-
-    struct AInfo {
-        is_x: bool,
-        kind: AKind,
+    struct BlockFactory {
+        create_instance: Box<
+            dyn Fn(
+                Entity,
+                &mut World,
+            ) -> Result<HashMap<SlotName, Entity>, BlockInstanceCreationError>,
+        >,
     }
 
-    trait W1 {
-        fn list_a_refs(&self) -> Vec<String>;
-        fn a_ref_info(&self, a_ref: &String) -> AInfo;
-        fn satisfies(&self, a_kind: &AKind, s_kind: &SKind) -> bool;
-    }
+    trait ArtifactInstantiation {
+        fn get_factory(&self, aref: &ArtifactReference) -> BlockFactory;
+        fn register_factory(&self, aref: ArtifactReference, factory: BlockFactory);
 
-    trait W2 {
         fn alloc(&mut self) -> Entity;
-        fn build(&mut self, a_ref: &String, root: &Entity) -> Result<(), ErrorInstancingAnA>;
-        fn destroy(&mut self, root: &Entity);
+        fn destroy(&mut self, root: Entity);
         fn free(&mut self, root: Entity);
 
-        fn get_ss(&self, root: &Entity) -> Result<Vec<(Entity, S)>, GetSsError>;
+        fn build_artifact(
+            &mut self,
+            mref: &ModelReference,
+            aref: &ArtifactReference,
+            root: Entity,
+        ) -> HashMap<SlotName, Entity>;
+        fn build_structure(
+            &mut self,
+            mref: &ModelReference,
+            structure: &Structure,
+            root: Entity,
+        ) -> HashMap<SlotName, Entity>;
     }
 
-    trait WAux {
-        fn create_an_x(&mut self, x: Box<dyn X>, root: Entity);
-        fn create_an_a(&mut self, a: A, root: Entity);
-    }
-
-    impl WAux for World {
-        fn create_an_x(&mut self, x: Box<dyn X>, root: Entity) {
+    impl ArtifactInstantiation for World {
+        fn get_factory(&self, aref: &ArtifactReference) -> BlockFactory {
             todo!()
         }
-        fn create_an_a(&mut self, a: Artifact, root: Entity) {
+        fn register_factory(&self, aref: ArtifactReference, factory: BlockFactory) {
             todo!()
         }
-    }
+        fn alloc(&mut self) -> Entity {
+            todo!()
+        }
+        fn destroy(&mut self, root: Entity) {
+            todo!()
+        }
+        fn free(&mut self, root: Entity) {
+            todo!()
+        }
+        fn build_artifact(
+            &mut self,
+            mref: &ModelReference,
+            aref: &ArtifactReference,
+            root: Entity,
+        ) -> HashMap<SlotName, Entity> {
+            let artifact: Artifact = (*self
+                .get_model(&mref)
+                .get(&aref)
+                .expect("Artifact not found in model"))
+            .clone();
 
-    #[derive(Debug)]
-    enum ErrorInstancingAnA {
-        DuringFetch(FetchError),
-        OfTypeX(XCreateError),
-        OfTypeY(YCreateError),
-    }
-
-    impl Artifact {
-        fn create(&self, root: Entity, world: &mut World) -> Result<(), ErrorInstancingAnA> {
-            match self {
-                Artifact::X(x) => x.create(root, world).map_err(ErrorInstancingAnA::OfTypeX),
-                Artifact::Y(y) => y.create(root, world).map_err(ErrorInstancingAnA::OfTypeY),
+            match artifact {
+                Artifact::Block(_block) => {
+                    let factory = self.get_factory(aref);
+                    (factory.create_instance)(root, self).expect("Block creation error")
+                }
+                Artifact::Structure(structure) => self.build_structure(mref, &structure, root),
             }
         }
-    }
 
-    type XCreateError = String;
+        fn build_structure(
+            &mut self,
+            mref: &ModelReference,
+            structure: &Structure,
+            root: Entity,
+        ) -> HashMap<SlotName, Entity> {
+            let main_slots = self.build_artifact(mref, &structure.a_ref, root);
 
-    trait X {
-        fn create(&self, root: Entity, world: &mut World) -> Result<(), XCreateError>;
-    }
-
-    #[derive(Debug)]
-    enum YCreateError {
-        Fetch(FetchError),
-        GetSs(GetSsError),
-        CreatingRoot(Box<ErrorInstancingAnA>),
-        NoCforS(S),
-        CreatingC(S, Entity, CCreateError),
-    }
-
-    impl Y {
-        fn create(&self, root: Entity, world: &mut World) -> Result<(), YCreateError> {
-            let a = fetch(&self.a_ref, world).map_err(YCreateError::Fetch)?;
-            world.entity_mut(root).insert(self.clone());
-            a.create(root, world)
-                .map_err(|err| YCreateError::CreatingRoot(Box::new(err)))?;
-            let ss = get_ss(root, world).map_err(YCreateError::GetSs)?;
-            for (s_entity, s) in ss {
-                match self.c.get(&s.name) {
-                    Some(c) => {
-                        c.create(s.clone(), s_entity, world)
-                            .map_err(|err| YCreateError::CreatingC(s, s_entity, err))?;
-                    }
-                    None => return Err(YCreateError::NoCforS(s)),
+            let mut exposed_slots = HashMap::new();
+            for (slot_name, entity) in main_slots {
+                match structure.c.get(&slot_name) {
+                    Some(connection) => match connection {
+                        Connection::Structure(structure) => {
+                            self.build_structure(mref, structure, root);
+                        }
+                        Connection::Slot(slot_name) => {
+                            exposed_slots.insert(slot_name.clone(), entity);
+                        }
+                    },
+                    None => panic!("Err(YCreateError::NoCforS(s))"),
                 }
             }
-            Ok(())
+            exposed_slots
         }
-    }
-
-    #[derive(Debug)]
-    enum CCreateError {
-        YFullfillS(Y),
-        SFullfillS(S),
-        CreatingY(Box<YCreateError>),
-    }
-
-    impl C {
-        fn create(&self, s: S, root: Entity, world: &mut World) -> Result<(), CCreateError> {
-            match self {
-                C::Y(y) => {
-                    if !y_fullfills_s(y, &s.kind) {
-                        return Err(CCreateError::YFullfillS(y.clone()));
-                    }
-                    y.create(root, world)
-                        .map_err(|err| CCreateError::CreatingY(Box::new(err)))?;
-                }
-                C::S(c_s) => {
-                    if !s_fullfills_s(&c_s.kind, &s.kind) {
-                        return Err(CCreateError::SFullfillS(c_s.clone()));
-                    }
-                    c_s.create(root, world);
-                }
-            }
-            Ok(())
-        }
-        fn fullfils_s(&self, s: S) -> Result<(), CCreateError> {
-            match self {
-                C::Y(y) if !y_fullfills_s(y, &s.kind) => Err(CCreateError::YFullfillS(y.clone())),
-                C::S(c_s) if !s_fullfills_s(&c_s.kind, &s.kind) => {
-                    Err(CCreateError::SFullfillS(c_s.clone()))
-                }
-                _ => Ok(()),
-            }
-        }
-    }
-
-    impl S {
-        fn create(&self, root: Entity, world: &mut World) {
-            world.entity_mut(root).insert(self.clone());
-        }
-    }
-
-    #[derive(Debug)]
-    struct FetchError;
-    fn fetch(a_ref: &String, world: &World) -> Result<Artifact, FetchError> {
-        todo!()
-    }
-
-    #[derive(Debug)]
-    struct GetSsError;
-    fn get_ss(root: Entity, world: &World) -> Result<Vec<(Entity, S)>, GetSsError> {
-        todo!()
-    }
-
-    #[derive(Debug)]
-    struct SFullfilmentError;
-    fn y_fullfills_s(y: &Y, s_kind: &SKind) -> bool {
-        todo!()
-    }
-    fn s_fullfills_s(c_s_kind: &SKind, s_kind: &SKind) -> bool {
-        todo!()
     }
 }
 
@@ -207,21 +181,25 @@ mod mursten {
         SlotKind(x.into())
     }
 
+    #[derive(Debug, Clone, Eq, PartialEq)]
     pub struct Block {
-        main_slot_kind: SlotKind,
-        slots: HashMap<SlotName, SlotKind>,
+        pub main_slot_kind: SlotKind,
+        pub slots: HashMap<SlotName, SlotKind>,
     }
 
+    #[derive(Debug, Clone, Eq, PartialEq)]
     pub enum Artifact {
         Block(Block),
         Structure(Structure),
     }
 
+    #[derive(Debug, Clone, Eq, PartialEq)]
     pub struct Structure {
-        a_ref: ArtifactReference,
-        c: HashMap<SlotName, Connection>,
+        pub a_ref: ArtifactReference,
+        pub c: HashMap<SlotName, Connection>,
     }
 
+    #[derive(Debug, Clone, Eq, PartialEq)]
     pub enum Connection {
         Structure(Structure),
         Slot(SlotName),
@@ -246,7 +224,7 @@ mod mursten {
     #[derive(Debug)]
     pub struct GettingSlotOfError;
 
-    trait Model {
+    pub trait Model {
         fn set(&mut self, aref: ArtifactReference, artifact: Artifact);
         fn remove(&mut self, aref: &ArtifactReference);
         fn get(&self, aref: &ArtifactReference) -> Option<&Artifact>;
@@ -254,7 +232,9 @@ mod mursten {
         // TODO: This could be an iterator to easily support infinite models...
         fn list(&self) -> Vec<ArtifactReference>;
         // ... and expose something like this to hint users of what to expect of this.
-        fn is_finite(&self) -> bool { true }
+        fn is_finite(&self) -> bool {
+            true
+        }
 
         fn is_all_valid(&self) -> bool {
             self.validate_model().is_ok()
@@ -276,7 +256,10 @@ mod mursten {
             Ok(())
         }
 
-        fn main_slot_kind_of(&self, aref: &ArtifactReference) -> Result<SlotKind, GettingKindOfError> {
+        fn main_slot_kind_of(
+            &self,
+            aref: &ArtifactReference,
+        ) -> Result<SlotKind, GettingKindOfError> {
             self.main_slot_kind_of_with_breadcrumb(aref, vec![])
         }
         fn main_slot_kind_of_with_breadcrumb(
@@ -302,7 +285,10 @@ mod mursten {
             }
         }
 
-        fn slots_of(&self, aref: &ArtifactReference) -> Result<HashMap<SlotName, SlotKind>, GettingSlotOfError> {
+        fn slots_of(
+            &self,
+            aref: &ArtifactReference,
+        ) -> Result<HashMap<SlotName, SlotKind>, GettingSlotOfError> {
             match self.get(aref).unwrap() {
                 Artifact::Block(ref block) => Ok(block.slots.clone()),
                 Artifact::Structure(structure) => {
@@ -350,7 +336,7 @@ mod mursten {
             todo!()
         }
 
-        fn union<ModelPrime: Model>(&self, other_model: ModelPrime) -> InMemoryModel {
+        fn union(&self, other_model: &dyn Model) -> InMemoryModel {
             todo!()
         }
     }
@@ -605,7 +591,7 @@ mod mursten {
     fn peano_eval<M: Model>(aref: &ArtifactReference, model: &M) -> usize {
         if *aref == ar("number_2") {
             2
-        } else if  *aref == ar("number_4") {
+        } else if *aref == ar("number_4") {
             4
         } else {
             todo!("Not implemented")
