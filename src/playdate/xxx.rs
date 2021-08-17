@@ -208,7 +208,7 @@ mod mursten {
     }
 
     pub struct Block {
-        kind: SlotKind,
+        main_slot_kind: SlotKind,
         slots: HashMap<SlotName, SlotKind>,
     }
 
@@ -250,7 +250,11 @@ mod mursten {
         fn set(&mut self, aref: ArtifactReference, artifact: Artifact);
         fn remove(&mut self, aref: &ArtifactReference);
         fn get(&self, aref: &ArtifactReference) -> Option<&Artifact>;
+
+        // TODO: This could be an iterator to easily support infinite models...
         fn list(&self) -> Vec<ArtifactReference>;
+        // ... and expose something like this to hint users of what to expect of this.
+        fn is_finite(&self) -> bool { true }
 
         fn is_all_valid(&self) -> bool {
             self.validate_model().is_ok()
@@ -265,17 +269,17 @@ mod mursten {
         }
 
         fn validate(&self, aref: &ArtifactReference) -> Result<(), ArtifactValidationError> {
-            self.kind_of(aref)
+            self.main_slot_kind_of(aref)
                 .map_err(ArtifactValidationError::GettingKindOf)?;
             self.slots_of(aref)
                 .map_err(ArtifactValidationError::GettingSlotOf)?;
             Ok(())
         }
 
-        fn kind_of(&self, aref: &ArtifactReference) -> Result<SlotKind, GettingKindOfError> {
-            self.kind_of_with_breadcrumb(aref, vec![])
+        fn main_slot_kind_of(&self, aref: &ArtifactReference) -> Result<SlotKind, GettingKindOfError> {
+            self.main_slot_kind_of_with_breadcrumb(aref, vec![])
         }
-        fn kind_of_with_breadcrumb(
+        fn main_slot_kind_of_with_breadcrumb(
             &self,
             aref: &ArtifactReference,
             mut breadcrumb: Vec<ArtifactReference>,
@@ -284,7 +288,7 @@ mod mursten {
                 .get(aref)
                 .ok_or_else(|| GettingKindOfError::Unexistent(breadcrumb.clone(), aref.clone()))?
             {
-                Artifact::Block(ref block) => Ok(block.kind.clone()),
+                Artifact::Block(ref block) => Ok(block.main_slot_kind.clone()),
                 Artifact::Structure(structure) => {
                     breadcrumb.push(aref.clone());
                     if breadcrumb.contains(&structure.a_ref) {
@@ -293,7 +297,7 @@ mod mursten {
                             structure.a_ref.clone(),
                         ));
                     }
-                    self.kind_of_with_breadcrumb(&structure.a_ref, breadcrumb)
+                    self.main_slot_kind_of_with_breadcrumb(&structure.a_ref, breadcrumb)
                 }
             }
         }
@@ -414,12 +418,12 @@ mod mursten {
         model.set(
             a.clone(),
             Artifact::Block(Block {
-                kind: sk("A"),
+                main_slot_kind: sk("A"),
                 slots: hashmap! {},
             }),
         );
         model.validate_model().unwrap();
-        assert_eq!(model.kind_of(&a).unwrap(), sk("A"));
+        assert_eq!(model.main_slot_kind_of(&a).unwrap(), sk("A"));
         assert_eq!(model.slots_of(&a).unwrap(), hashmap! {});
 
         let artifact = model.get(&a).unwrap();
@@ -434,14 +438,14 @@ mod mursten {
         model.set(
             ar("a"),
             Artifact::Block(Block {
-                kind: sk("A"),
+                main_slot_kind: sk("A"),
                 slots: hashmap! {
                     sn("1") => sk("A")
                 },
             }),
         );
         model.validate_model().unwrap();
-        assert_eq!(model.kind_of(&ar("a")).unwrap(), sk("A"));
+        assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("A"));
         assert_eq!(model.slots_of(&ar("a")).unwrap()[&sn("1")], sk("A"));
 
         let artifact = model.get(&ar("a")).unwrap();
@@ -472,7 +476,7 @@ mod mursten {
         model.set(
             ar("b"),
             Artifact::Block(Block {
-                kind: sk("B"),
+                main_slot_kind: sk("B"),
                 slots: hashmap! {},
             }),
         );
@@ -485,7 +489,7 @@ mod mursten {
         );
         model.validate_model().unwrap();
 
-        assert_eq!(model.kind_of(&ar("a")).unwrap(), sk("B"));
+        assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("B"));
         assert_eq!(model.slots_of(&ar("a")).unwrap().is_empty(), true);
     }
 
@@ -495,7 +499,7 @@ mod mursten {
         model.set(
             ar("b"),
             Artifact::Block(Block {
-                kind: sk("B"),
+                main_slot_kind: sk("B"),
                 slots: hashmap! {
                     sn("80") => sk("PROTO")
                 },
@@ -512,7 +516,7 @@ mod mursten {
         );
         model.validate_model().unwrap();
 
-        assert_eq!(model.kind_of(&ar("a")).unwrap(), sk("B"));
+        assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("B"));
         assert_eq!(
             model.slots_of(&ar("a")).unwrap(),
             hashmap! {sn("9980") => sk("PROTO")}
@@ -557,7 +561,7 @@ mod mursten {
         model.set(
             ar("successor"),
             Artifact::Block(Block {
-                kind: sk("Natural"),
+                main_slot_kind: sk("Natural"),
                 slots: hashmap! {
                     sn("x") => sk("Natural"),
                 },
@@ -566,7 +570,7 @@ mod mursten {
         model.set(
             ar("zero"),
             Artifact::Block(Block {
-                kind: sk("Natural"),
+                main_slot_kind: sk("Natural"),
                 slots: hashmap! {},
             }),
         );
