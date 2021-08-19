@@ -144,7 +144,9 @@ mod root_ui {
     ) {
         egui::TopPanel::top("root_menu").show(egui_context.ctx(), |ui| {
             egui::menu::bar(ui, |ui| {
-                for entry in menu_entries.iter() {
+                let mut menu_entries: Vec<_> = menu_entries.iter().collect();
+                menu_entries.sort_by(|a, b| a.name.cmp(&b.name));
+                for entry in menu_entries {
                     egui::menu::menu(ui, &entry.name, |ui| {
                         for action in entry.actions.iter() {
                             if ui.button(&action.name).clicked() {
