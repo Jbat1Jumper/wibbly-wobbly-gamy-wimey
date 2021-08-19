@@ -70,15 +70,21 @@ fn mursten_model_editor(
     mut editor: ResMut<ModelEditor>,
     mut egui_context: ResMut<EguiContext>,
 ) {
-    egui::Window::new(editor.title()).show(egui_context.ctx(), |ui| {
+    egui::Window::new(editor.title()).id(bevy_egui::egui::Id::new("Mursten editor")).show(egui_context.ctx(), |ui| {
         let mut changes = vec![];
         let action = editor.show(&*model, ui);
         editor.apply(&*model, &mut changes, action);
-        for c in changes {
+        let results = changes.into_iter().map(|change| {
             use mursten::Model;
-            info!("{:?}", c.clone());
-            model.apply(c);
+            match model.apply(change) {
+                Ok(text) => editor.info(text),
+                Err(text) => editor.error(text),
+            }
+        });
+
+        for result in results {
         }
+
     });
 }
 

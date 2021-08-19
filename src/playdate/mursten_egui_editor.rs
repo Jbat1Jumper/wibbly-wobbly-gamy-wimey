@@ -4,6 +4,7 @@ use bevy_egui::egui::*;
 #[derive(Debug, Default)]
 pub struct ModelEditor {
     focused: bool,
+    log: Vec<EditorLog>,
     model_is_valid: bool,
     status: EditorStatus,
 }
@@ -27,6 +28,12 @@ pub enum EditorAction {
     ConfirmAddBlock(String, String),
 }
 
+#[derive(Debug)]
+enum EditorLog {
+    Info(String),
+    Error(String),
+}
+
 impl ModelEditor {
     pub fn title(&mut self) -> &str {
         match self.status {
@@ -34,20 +41,26 @@ impl ModelEditor {
             EditorStatus::AddingABlock(_, _) => "Adding a new block",
         }
     }
+
+    pub fn error(&mut self, text: String) {
+        self.log.push(EditorLog::Error(text));
+    }
+
+    pub fn info(&mut self, text: String) {
+        self.log.push(EditorLog::Info(text));
+    }
+
+
     pub fn show(&mut self, model: &dyn Model, ui: &mut Ui) -> EditorAction {
         self.model_is_valid = model.validate_model().is_ok();
-        match self.status {
+        let action = match self.status {
             EditorStatus::Listing => {
-                for aref in model.list_artifacts().iter() {
-                    self.list_item(model, ui, aref);
-                }
-                if self.model_is_valid {
-                    ui.label("Model is valid");
-                } else {
-                    ui.colored_label(Color32::RED, "Model is not valid");
-                }
                 if ui.button("Add block").clicked() {
                     return EditorAction::OpenAddBlockPrompt;
+                }
+                ui.separator();
+                for aref in model.list_artifacts().iter() {
+                    self.list_item(model, ui, aref);
                 }
                 EditorAction::Nothing
             }
@@ -65,19 +78,39 @@ impl ModelEditor {
                 }
                 EditorAction::Nothing
             }
+        };
+
+        ui.separator();
+        if self.model_is_valid {
+            ui.label("Model is valid");
+        } else {
+            ui.colored_label(Color32::RED, "Model is not valid");
         }
+        if let Some(entry) = self.log.last() {
+            match entry {
+                EditorLog::Info(text) => ui.label(text),
+                EditorLog::Error(text) => ui.colored_label(Color32::RED, text),
+            };
+        }
+
+        action
     }
 
-    pub fn apply(&mut self, model: &dyn Model, changes: &mut Vec<ModelChange>, action: EditorAction)
-    {
+    pub fn apply(
+        &mut self,
+        model: &dyn Model,
+        changes: &mut Vec<ModelChange>,
+        action: EditorAction,
+    ) {
         match action {
             EditorAction::Nothing => (),
             EditorAction::GoToListing => {
                 self.status = EditorStatus::Listing;
             }
             EditorAction::OpenAddBlockPrompt => {
-                self.status = EditorStatus::AddingABlock("my_new_block".into(), "NewBlockKind".into());
-            },
+                self.status =
+                    EditorStatus::AddingABlock("my_new_block".into(), "NewBlockKind".into());
+            }
             EditorAction::ConfirmAddBlock(aref, slot_kind) => {
                 changes.push(ModelChange::AddBlock(ar(aref), sk(slot_kind)));
                 self.status = EditorStatus::Listing;
@@ -146,7 +179,6 @@ impl ModelEditor {
 
 /*
  * TODO:
- * - create a block
  * - (safely) delete an artifact
  *
  * - change the type of a block

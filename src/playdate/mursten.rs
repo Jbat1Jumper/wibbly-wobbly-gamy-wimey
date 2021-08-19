@@ -102,6 +102,10 @@ pub trait Model: Send + Sync {
         true
     }
 
+    fn exists_artifact(&self, aref: &ArtifactReference) -> bool {
+        self.get_artifact(aref).is_some()
+    }
+
     fn is_all_valid(&self) -> bool {
         self.validate_model().is_ok()
     }
@@ -201,16 +205,19 @@ pub trait Model: Send + Sync {
         todo!()
     }
 
-    fn apply(&mut self, change: ModelChange) {
+    fn apply(&mut self, change: ModelChange) -> Result<String, String> {
         match change {
             ModelChange::AddBlock(aref, slot_kind) => {
-                self.set_artifact(aref, Artifact::Block(Block {
-                    main_slot_kind: slot_kind,
+                if self.exists_artifact(&aref) {
+                    return Err(format!("Block {} already exists", aref));
+                }
+                self.set_artifact(aref.clone(), Artifact::Block(Block {
+                    main_slot_kind: slot_kind.clone(),
                     slots: HashMap::default(),
-                }))
+                }));
+                Ok(format!("Added block {} with kind {}", aref, slot_kind))
             }
         }
-
     }
 }
 
