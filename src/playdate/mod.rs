@@ -1,12 +1,14 @@
 use crate::root_ui::*;
 use bevy::{prelude::*, utils::HashMap};
 
-use self::xxx::{mursten::{InMemoryModel}, mursten_bevy_plugin::CurrentModel, mursten_egui_editor::ModelEditor};
+use self::{mursten::{InMemoryModel}, mursten_bevy_plugin::CurrentModel, mursten_egui_editor::ModelEditor};
 
 mod skeleton;
 mod skeleton_instance;
 mod skeleton_editor;
-mod xxx;
+mod mursten;
+mod mursten_bevy_plugin;
+mod mursten_egui_editor;
 
 // use skeleton_editor::SkeletonEditor;
 
