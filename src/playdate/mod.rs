@@ -1,6 +1,8 @@
 use crate::root_ui::*;
 use bevy::{prelude::*, utils::HashMap};
 
+use self::xxx::{mursten::{InMemoryModel}, mursten_bevy_plugin::CurrentModel, mursten_egui_editor::ModelEditor};
+
 mod skeleton;
 mod skeleton_instance;
 mod skeleton_editor;
@@ -48,12 +50,25 @@ impl Plugin for PlaydateSkeletonsPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app
             // .require(RootUiPlugin)
+            .insert_resource(CurrentModel(Box::new(InMemoryModel::default())))
+            .insert_resource(ModelEditor::default())
+            .add_system(mursten_model_editor.system())
             .add_startup_system(on_startup.system())
             .add_startup_system(create_menu_entry.system())
             .insert_resource(SkeletonDatabase::default())
             .add_system(SkeletonDatabase::render_stuff.system());
             //.add_system(SkeletonEditor::render_editors.system());
     }
+}
+
+fn mursten_model_editor(
+    model: Res<CurrentModel>,
+    mut editor: ResMut<ModelEditor>,
+    mut egui_context: ResMut<EguiContext>,
+) {
+    egui::Window::new("Mursten Model Editor").show(egui_context.ctx(), |ui| {
+        editor.show(&*model, ui);
+    });
 }
 
 fn on_startup(

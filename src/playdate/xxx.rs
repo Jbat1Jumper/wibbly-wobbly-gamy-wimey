@@ -1,45 +1,63 @@
-mod mursten_bevy_plugin {
+pub mod mursten_egui_editor {
+    use super::mursten::*;
+    use bevy_egui::egui::*;
+
+    #[derive(Debug, Default)]
+    pub struct ModelEditor {}
+
+    impl ModelEditor {
+        pub fn show(&mut self, model: &dyn Model, ui: &mut Ui) {
+            for aref in model.list_artifacts().iter() {
+                self.list_item(model, ui, aref);
+            }
+
+            ui.label("Showing model");
+        }
+        fn list_item(&mut self, model: &dyn Model, ui: &mut Ui, aref: &ArtifactReference) {
+            match model.get_artifact(aref).unwrap() {
+                Artifact::Block(_) => ui.label(format!("[B] {}", aref)),
+                Artifact::Structure(_) => ui.label(format!("[S] {}", aref)),
+            };
+        }
+    }
+
+    /*
+     * TODO:
+     * - be able to explore a model
+     *     - list all available artifacts
+     *     - see artifact detail (block or structure)
+     *     - follow structure links
+     *     - go back
+     * - be able to create an artifact
+     * - be able to (safely) delete an artifact
+     * - be able to (safely) edit a structure
+     *     - change artifact reference
+     *     - connect artifact in slot
+     */
+}
+
+pub mod mursten_bevy_plugin {
     use bevy::{ecs::system::Command, prelude::*};
     use std::collections::HashMap;
 
     use super::mursten::*;
 
-    // TODO: This could probably be in another module separated from bevy.
-    // Some things like a trait for a ModelRepository with crud operations and model resolution
-    // algorithms can be used without the bevy application. For instance, implementing a model repository
-    // on top of a distributed network is something agnostic to bevy but directly usable by this
-    // library.
-    #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-    pub struct ModelReference(String);
-    pub fn mr<T: Into<String>>(x: T) -> ModelReference {
-        ModelReference(x.into())
-    }
+    pub struct CurrentModel(pub Box<dyn Model>);
 
-    enum ModelChange {}
+    pub enum ModelChange {}
 
-    pub trait ModelRepository {
-        fn list_models(&mut self) -> Vec<ModelReference>;
-        fn delete_model(&self, mref: &ModelReference);
-        fn get_model(&self, mref: &ModelReference) -> &dyn Model;
-        fn create_empty_model(&mut self, mref: ModelReference);
-        fn change_model(&mut self, mref: &ModelReference, change: ModelChange);
-    }
-
-    impl ModelRepository for World {
-        fn list_models(&mut self) -> Vec<ModelReference> {
-            todo!()
+    impl Model for CurrentModel {
+        fn set_artifact(&mut self, aref: ArtifactReference, artifact: Artifact) {
+            self.0.set_artifact(aref, artifact)
         }
-        fn delete_model(&self, mref: &ModelReference) {
-            todo!()
+        fn remove_artifact(&mut self, aref: &ArtifactReference) {
+            self.0.remove_artifact(aref)
         }
-        fn get_model(&self, mref: &ModelReference) -> &dyn Model {
-            todo!()
+        fn get_artifact(&self, aref: &ArtifactReference) -> Option<&Artifact> {
+            self.0.get_artifact(aref)
         }
-        fn create_empty_model(&mut self, mref: ModelReference) {
-            todo!()
-        }
-        fn change_model(&mut self, mref: &ModelReference, change: ModelChange) {
-            todo!()
+        fn list_artifacts(&self) -> Vec<ArtifactReference> {
+            self.0.list_artifacts()
         }
     }
 
@@ -52,14 +70,17 @@ mod mursten_bevy_plugin {
 
     struct CreateInstance {
         aref: ArtifactReference,
-        mref: ModelReference,
         root: Entity,
     }
 
     impl Command for CreateInstance {
         fn write(self: Box<Self>, world: &mut World) {
-            let a = world.get_model(&self.mref).get(&self.aref).unwrap();
-            world.build_artifact(&self.mref, &self.aref, self.root);
+            let a = world
+                .get_resource::<CurrentModel>()
+                .unwrap()
+                .get_artifact(&self.aref)
+                .unwrap();
+            world.build_artifact(&self.aref, self.root);
         }
     }
 
@@ -82,13 +103,11 @@ mod mursten_bevy_plugin {
 
         fn build_artifact(
             &mut self,
-            mref: &ModelReference,
             aref: &ArtifactReference,
             root: Entity,
         ) -> HashMap<SlotName, Entity>;
         fn build_structure(
             &mut self,
-            mref: &ModelReference,
             structure: &Structure,
             root: Entity,
         ) -> HashMap<SlotName, Entity>;
@@ -112,13 +131,13 @@ mod mursten_bevy_plugin {
         }
         fn build_artifact(
             &mut self,
-            mref: &ModelReference,
             aref: &ArtifactReference,
             root: Entity,
         ) -> HashMap<SlotName, Entity> {
             let artifact: Artifact = (*self
-                .get_model(&mref)
-                .get(&aref)
+                .get_resource::<CurrentModel>()
+                .unwrap()
+                .get_artifact(&aref)
                 .expect("Artifact not found in model"))
             .clone();
 
@@ -127,24 +146,23 @@ mod mursten_bevy_plugin {
                     let factory = self.get_factory(aref);
                     (factory.create_instance)(root, self).expect("Block creation error")
                 }
-                Artifact::Structure(structure) => self.build_structure(mref, &structure, root),
+                Artifact::Structure(structure) => self.build_structure(&structure, root),
             }
         }
 
         fn build_structure(
             &mut self,
-            mref: &ModelReference,
             structure: &Structure,
             root: Entity,
         ) -> HashMap<SlotName, Entity> {
-            let main_slots = self.build_artifact(mref, &structure.a_ref, root);
+            let main_slots = self.build_artifact(&structure.a_ref, root);
 
             let mut exposed_slots = HashMap::new();
             for (slot_name, entity) in main_slots {
                 match structure.c.get(&slot_name) {
                     Some(connection) => match connection {
                         Connection::Structure(structure) => {
-                            self.build_structure(mref, structure, root);
+                            self.build_structure(structure, root);
                         }
                         Connection::Slot(slot_name) => {
                             exposed_slots.insert(slot_name.clone(), entity);
@@ -156,17 +174,36 @@ mod mursten_bevy_plugin {
             exposed_slots
         }
     }
+
+    #[test]
+    #[ignore]
+    fn create_instance_of_basic_block() {
+        todo!(
+            "
+            - Define a factory for a basic block with one component.
+            - In an empty world instance one of those artifacts.
+            - Check if the component got created.
+            "
+        )
+    }
 }
 
-mod mursten {
+pub mod mursten {
     #[macro_use]
     pub use maplit::hashmap;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, fmt::{Display, Write}};
 
     #[derive(Debug, Clone, Eq, PartialEq, Hash)]
     pub struct ArtifactReference(String);
     pub fn ar<T: Into<String>>(x: T) -> ArtifactReference {
         ArtifactReference(x.into())
+    }
+
+    impl Display for ArtifactReference {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("@")?;
+            self.0.fmt(f)
+        }
     }
 
     #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -224,13 +261,13 @@ mod mursten {
     #[derive(Debug)]
     pub struct GettingSlotOfError;
 
-    pub trait Model {
-        fn set(&mut self, aref: ArtifactReference, artifact: Artifact);
-        fn remove(&mut self, aref: &ArtifactReference);
-        fn get(&self, aref: &ArtifactReference) -> Option<&Artifact>;
+    pub trait Model: Send + Sync {
+        fn set_artifact(&mut self, aref: ArtifactReference, artifact: Artifact);
+        fn remove_artifact(&mut self, aref: &ArtifactReference);
+        fn get_artifact(&self, aref: &ArtifactReference) -> Option<&Artifact>;
 
         // TODO: This could be an iterator to easily support infinite models...
-        fn list(&self) -> Vec<ArtifactReference>;
+        fn list_artifacts(&self) -> Vec<ArtifactReference>;
         // ... and expose something like this to hint users of what to expect of this.
         fn is_finite(&self) -> bool {
             true
@@ -241,7 +278,7 @@ mod mursten {
         }
 
         fn validate_model(&self) -> Result<(), ModelValidationError> {
-            for aref in self.list().into_iter() {
+            for aref in self.list_artifacts().into_iter() {
                 self.validate(&aref)
                     .map_err(|err| ModelValidationError::Artifact(aref, err))?;
             }
@@ -268,7 +305,7 @@ mod mursten {
             mut breadcrumb: Vec<ArtifactReference>,
         ) -> Result<SlotKind, GettingKindOfError> {
             match self
-                .get(aref)
+                .get_artifact(aref)
                 .ok_or_else(|| GettingKindOfError::Unexistent(breadcrumb.clone(), aref.clone()))?
             {
                 Artifact::Block(ref block) => Ok(block.main_slot_kind.clone()),
@@ -289,7 +326,7 @@ mod mursten {
             &self,
             aref: &ArtifactReference,
         ) -> Result<HashMap<SlotName, SlotKind>, GettingSlotOfError> {
-            match self.get(aref).unwrap() {
+            match self.get_artifact(aref).unwrap() {
                 Artifact::Block(ref block) => Ok(block.slots.clone()),
                 Artifact::Structure(structure) => {
                     if *aref == structure.a_ref {
@@ -367,21 +404,22 @@ mod mursten {
         }
     }
 
+    #[derive(Debug, Default)]
     pub struct InMemoryModel(HashMap<ArtifactReference, Artifact>);
 
     impl Model for InMemoryModel {
-        fn set(&mut self, aref: ArtifactReference, artifact: Artifact) {
+        fn set_artifact(&mut self, aref: ArtifactReference, artifact: Artifact) {
             self.0.insert(aref, artifact);
         }
 
-        fn remove(&mut self, aref: &ArtifactReference) {
+        fn remove_artifact(&mut self, aref: &ArtifactReference) {
             self.0.remove(aref);
         }
 
-        fn get(&self, aref: &ArtifactReference) -> Option<&Artifact> {
+        fn get_artifact(&self, aref: &ArtifactReference) -> Option<&Artifact> {
             self.0.get(aref)
         }
-        fn list(&self) -> Vec<ArtifactReference> {
+        fn list_artifacts(&self) -> Vec<ArtifactReference> {
             self.0.keys().cloned().collect()
         }
     }
@@ -394,14 +432,14 @@ mod mursten {
     fn empty_model_is_valid() {
         let mut model = empty_test_model();
         model.validate_model().unwrap();
-        assert!(model.list().is_empty());
+        assert!(model.list_artifacts().is_empty());
     }
 
     #[test]
     fn a_simple_block() {
         let mut model = empty_test_model();
         let a = ar("a");
-        model.set(
+        model.set_artifact(
             a.clone(),
             Artifact::Block(Block {
                 main_slot_kind: sk("A"),
@@ -412,16 +450,16 @@ mod mursten {
         assert_eq!(model.main_slot_kind_of(&a).unwrap(), sk("A"));
         assert_eq!(model.slots_of(&a).unwrap(), hashmap! {});
 
-        let artifact = model.get(&a).unwrap();
+        let artifact = model.get_artifact(&a).unwrap();
         assert_eq!(artifact.composite(), false);
 
-        assert!(model.list().contains(&a));
+        assert!(model.list_artifacts().contains(&a));
     }
 
     #[test]
     fn a_block_with_a_slot() {
         let mut model = empty_test_model();
-        model.set(
+        model.set_artifact(
             ar("a"),
             Artifact::Block(Block {
                 main_slot_kind: sk("A"),
@@ -434,16 +472,16 @@ mod mursten {
         assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("A"));
         assert_eq!(model.slots_of(&ar("a")).unwrap()[&sn("1")], sk("A"));
 
-        let artifact = model.get(&ar("a")).unwrap();
+        let artifact = model.get_artifact(&ar("a")).unwrap();
         assert_eq!(artifact.composite(), false);
 
-        assert!(model.list().contains(&ar("a")));
+        assert!(model.list_artifacts().contains(&ar("a")));
     }
 
     #[test]
     fn a_structure_depending_on_an_unexistent_artifact() {
         let mut model = empty_test_model();
-        model.set(
+        model.set_artifact(
             ar("a"),
             Artifact::Structure(Structure {
                 a_ref: ar("b"),
@@ -452,21 +490,21 @@ mod mursten {
         );
         model.validate_model().expect_err("Should fail");
 
-        assert!(model.list().contains(&ar("a")));
-        assert!(model.get(&ar("a")).unwrap().composite());
+        assert!(model.list_artifacts().contains(&ar("a")));
+        assert!(model.get_artifact(&ar("a")).unwrap().composite());
     }
 
     #[test]
     fn a_structure_using_a_simple_block() {
         let mut model = empty_test_model();
-        model.set(
+        model.set_artifact(
             ar("b"),
             Artifact::Block(Block {
                 main_slot_kind: sk("B"),
                 slots: hashmap! {},
             }),
         );
-        model.set(
+        model.set_artifact(
             ar("a"),
             Artifact::Structure(Structure {
                 a_ref: ar("b"),
@@ -482,7 +520,7 @@ mod mursten {
     #[test]
     fn a_structure_using_a_simple_block_remapping_slots() {
         let mut model = empty_test_model();
-        model.set(
+        model.set_artifact(
             ar("b"),
             Artifact::Block(Block {
                 main_slot_kind: sk("B"),
@@ -491,7 +529,7 @@ mod mursten {
                 },
             }),
         );
-        model.set(
+        model.set_artifact(
             ar("a"),
             Artifact::Structure(Structure {
                 a_ref: ar("b"),
@@ -512,7 +550,7 @@ mod mursten {
     #[test]
     fn a_structure_depending_on_itself() {
         let mut model = empty_test_model();
-        model.set(
+        model.set_artifact(
             ar("a"),
             Artifact::Structure(Structure {
                 a_ref: ar("a"),
@@ -525,14 +563,14 @@ mod mursten {
     #[test]
     fn mutually_recursive_structures() {
         let mut model = empty_test_model();
-        model.set(
+        model.set_artifact(
             ar("a"),
             Artifact::Structure(Structure {
                 a_ref: ar("b"),
                 c: hashmap! {},
             }),
         );
-        model.set(
+        model.set_artifact(
             ar("b"),
             Artifact::Structure(Structure {
                 a_ref: ar("a"),
@@ -544,7 +582,7 @@ mod mursten {
 
     fn peano_model() -> InMemoryModel {
         let mut model = empty_test_model();
-        model.set(
+        model.set_artifact(
             ar("successor"),
             Artifact::Block(Block {
                 main_slot_kind: sk("Natural"),
@@ -553,7 +591,7 @@ mod mursten {
                 },
             }),
         );
-        model.set(
+        model.set_artifact(
             ar("zero"),
             Artifact::Block(Block {
                 main_slot_kind: sk("Natural"),
@@ -566,7 +604,7 @@ mod mursten {
     #[test]
     fn peano_numbers() {
         let mut model = peano_model();
-        model.set(
+        model.set_artifact(
             ar("number_2"),
             Artifact::Structure(Structure {
                 a_ref: ar("successor"),
@@ -601,7 +639,7 @@ mod mursten {
     #[test]
     fn two_and_two_is_four() {
         let mut model = peano_model();
-        model.set(
+        model.set_artifact(
             ar("plus_2"),
             Artifact::Structure(Structure {
                 a_ref: ar("successor"),
@@ -615,7 +653,7 @@ mod mursten {
                 },
             }),
         );
-        model.set(
+        model.set_artifact(
             ar("number_4"),
             Artifact::Structure(Structure {
                 a_ref: ar("plus_2"),
