@@ -200,7 +200,25 @@ pub trait Model: Send + Sync {
     fn union(&self, other_model: &dyn Model) -> InMemoryModel {
         todo!()
     }
+
+    fn apply(&mut self, change: ModelChange) {
+        match change {
+            ModelChange::AddBlock(aref, slot_kind) => {
+                self.set_artifact(aref, Artifact::Block(Block {
+                    main_slot_kind: slot_kind,
+                    slots: HashMap::default(),
+                }))
+            }
+        }
+
+    }
 }
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum ModelChange {
+    AddBlock(ArtifactReference, SlotKind),
+}
+
 
 pub struct Location(Vec<SlotName>);
 

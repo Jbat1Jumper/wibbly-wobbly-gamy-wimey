@@ -66,12 +66,19 @@ impl Plugin for PlaydateSkeletonsPlugin {
 }
 
 fn mursten_model_editor(
-    model: Res<CurrentModel>,
+    mut model: ResMut<CurrentModel>,
     mut editor: ResMut<ModelEditor>,
     mut egui_context: ResMut<EguiContext>,
 ) {
-    egui::Window::new("Mursten Model Editor").show(egui_context.ctx(), |ui| {
-        editor.show(&*model, ui);
+    egui::Window::new(editor.title()).show(egui_context.ctx(), |ui| {
+        let mut changes = vec![];
+        let action = editor.show(&*model, ui);
+        editor.apply(&*model, &mut changes, action);
+        for c in changes {
+            use mursten::Model;
+            info!("{:?}", c.clone());
+            model.apply(c);
+        }
     });
 }
 
