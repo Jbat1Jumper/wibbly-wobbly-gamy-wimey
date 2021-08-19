@@ -13,7 +13,7 @@ pub fn ar<T: Into<String>>(x: T) -> ArtifactReference {
 
 impl Display for ArtifactReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("@")?;
+        //f.write_str("@")?;
         self.0.fmt(f)
     }
 }
@@ -23,12 +23,29 @@ pub struct SlotName(String);
 pub fn sn<T: Into<String>>(x: T) -> SlotName {
     SlotName(x.into())
 }
+impl Display for SlotName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("'")?;
+        self.0.fmt(f)
+    }
+}
+
+
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SlotKind(String);
 pub fn sk<T: Into<String>>(x: T) -> SlotKind {
     SlotKind(x.into())
 }
+
+impl Display for SlotKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[")?;
+        self.0.fmt(f)?;
+        f.write_str("]")
+    }
+}
+
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Block {
@@ -387,7 +404,7 @@ fn mutually_recursive_structures() {
     model.validate_model().expect_err("Should fail");
 }
 
-fn peano_model() -> InMemoryModel {
+pub fn peano_model() -> InMemoryModel {
     let mut model = empty_test_model();
     model.set_artifact(
         ar("successor"),
@@ -443,8 +460,7 @@ fn peano_eval<M: Model>(aref: &ArtifactReference, model: &M) -> usize {
     }
 }
 
-#[test]
-fn two_and_two_is_four() {
+pub fn two_and_two_is_four_model() -> InMemoryModel {
     let mut model = peano_model();
     model.set_artifact(
         ar("plus_2"),
@@ -477,6 +493,12 @@ fn two_and_two_is_four() {
             },
         }),
     );
+    model
+}
+
+#[test]
+fn two_and_two_is_four() {
+    let mut model = two_and_two_is_four_model();
     model.validate_model().unwrap();
     assert_eq!(model.slots_of(&ar("plus_2")).unwrap().keys().count(), 1);
     assert_eq!(

@@ -1,14 +1,16 @@
 use crate::root_ui::*;
 use bevy::{prelude::*, utils::HashMap};
 
-use self::{mursten::{InMemoryModel}, mursten_bevy_plugin::CurrentModel, mursten_egui_editor::ModelEditor};
+use self::{
+    mursten::InMemoryModel, mursten_bevy_plugin::CurrentModel, mursten_egui_editor::ModelEditor,
+};
 
-mod skeleton;
-mod skeleton_instance;
-mod skeleton_editor;
 mod mursten;
 mod mursten_bevy_plugin;
 mod mursten_egui_editor;
+mod skeleton;
+mod skeleton_editor;
+mod skeleton_instance;
 
 // use skeleton_editor::SkeletonEditor;
 
@@ -52,14 +54,14 @@ impl Plugin for PlaydateSkeletonsPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app
             // .require(RootUiPlugin)
-            .insert_resource(CurrentModel(Box::new(InMemoryModel::default())))
+            .insert_resource(CurrentModel(Box::new(mursten::two_and_two_is_four_model())))
             .insert_resource(ModelEditor::default())
             .add_system(mursten_model_editor.system())
             .add_startup_system(on_startup.system())
             .add_startup_system(create_menu_entry.system())
             .insert_resource(SkeletonDatabase::default())
             .add_system(SkeletonDatabase::render_stuff.system());
-            //.add_system(SkeletonEditor::render_editors.system());
+        //.add_system(SkeletonEditor::render_editors.system());
     }
 }
 
@@ -81,12 +83,12 @@ fn on_startup(
 ) {
     skeleton_db.load_from_disk();
     // commands.spawn_bundle(OrthographicCameraBundle::new_2d());
-   
+
     commands.spawn_bundle(PbrBundle {
         mesh: meshes.add(Mesh::from(shape::Plane { size: 5.0 })),
         material: materials.add(Color::rgb(0.3, 0.5, 0.3).into()),
         ..Default::default()
-    }); 
+    });
     commands.spawn_bundle(LightBundle {
         transform: Transform::from_xyz(4.0, 8.0, 4.0),
         ..Default::default()
@@ -192,8 +194,10 @@ impl SkeletonDatabase {
     }
     fn save_to_disk(&mut self) {
         info!("Writing to file!");
-        let f = std::fs::File::create(Self::file_path()).expect("Failed to write to skeletons file");
-        serde_json::to_writer_pretty(f, &self.skeletons).expect("Failed to rialize to skeletons files");
+        let f =
+            std::fs::File::create(Self::file_path()).expect("Failed to write to skeletons file");
+        serde_json::to_writer_pretty(f, &self.skeletons)
+            .expect("Failed to rialize to skeletons files");
         info!("Wrote {} skeletons", self.skeletons.len());
     }
     fn open_prompt(&mut self) {
