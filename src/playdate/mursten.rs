@@ -30,8 +30,6 @@ impl Display for SlotName {
     }
 }
 
-
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SlotKind(String);
 pub fn sk<T: Into<String>>(x: T) -> SlotKind {
@@ -45,7 +43,6 @@ impl Display for SlotKind {
         f.write_str("]")
     }
 }
-
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Block {
@@ -193,39 +190,53 @@ pub trait Model: Send + Sync {
         Ok(slots)
     }
 
+    fn direct_dependencies(&self, aref: &ArtifactReference) -> Vec<ArtifactReference> {
+        match self.get_artifact(aref).unwrap() {
+            Artifact::Structure(s) => {
+                let mut structures_to_see = vec![s];
+                let mut ds = vec![];
+                while !structures_to_see.is_empty() {
+                    let s = structures_to_see.pop().unwrap();
+                    ds.push(s.a_ref);
+                    for c in s.c.values() {
+                        match c {
+                            Connection::Structure(s2) => structures_to_see.push(s2),
+                            _ => (),
+                        }
+                    }
+                }
+                ds
+            },
+            Artifact::Block(b) => vec![],
+        }
+    }
+
     fn dependencies(&self, aref: &ArtifactReference) -> Vec<ArtifactReference> {
-        todo!()
+        let ds = self.direct_dependencies(aref);
+        let tds: Vec<_> = ds.iter().map(|aref2| self.dependencies(aref2)).flatten().collect();
+        ds.extend(tds);
+        ds.dedup();
+        ds
+    }
+
+    fn direct_dependents(&self, aref: &ArtifactReference) -> Vec<ArtifactReference> {
+        for other_aref in self.list_artifacts() {
+            if self.direct_dependencies(&other_aref).contains(aref)
+        }
     }
 
     fn dependents(&self, aref: &ArtifactReference) -> Vec<ArtifactReference> {
-        todo!()
+        let ds = self.direct_dependents(aref);
+        let tds: Vec<_> = ds.iter().map(|aref2| self.dependents(aref2)).flatten().collect();
+        ds.extend(tds);
+        ds.dedup();
+        ds
     }
 
     fn union(&self, other_model: &dyn Model) -> InMemoryModel {
         todo!()
     }
-
-    fn apply(&mut self, change: ModelChange) -> Result<String, String> {
-        match change {
-            ModelChange::AddBlock(aref, slot_kind) => {
-                if self.exists_artifact(&aref) {
-                    return Err(format!("Block {} already exists", aref));
-                }
-                self.set_artifact(aref.clone(), Artifact::Block(Block {
-                    main_slot_kind: slot_kind.clone(),
-                    slots: HashMap::default(),
-                }));
-                Ok(format!("Added block {} with kind {}", aref, slot_kind))
-            }
-        }
-    }
 }
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum ModelChange {
-    AddBlock(ArtifactReference, SlotKind),
-}
-
 
 pub struct Location(Vec<SlotName>);
 
