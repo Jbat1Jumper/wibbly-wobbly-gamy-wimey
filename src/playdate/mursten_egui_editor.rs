@@ -308,23 +308,9 @@ impl ModelEditor {
                 self.state = EditorState::Listing;
             }
             EditorAction::SafelyDeleteArtifact(aref) => {
-                if !model.exists_artifact(&aref) {
-                    self.context.error(format!("Block {} does not exists", aref));
-                    return;
-                }
-                let deps = model.dependents(&aref);
-                if deps.is_empty() {
-                    model.remove_artifact(&aref);
-                    self.context.info(format!("Removed {}", aref))
-                } else {
-                    self.context.error(format!(
-                        "Cannot delete {}, because {} depends on it",
-                        aref,
-                        deps.into_iter()
-                            .map(|dependent_aref| dependent_aref.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ))
+                match model.safely_remove_artifact(&aref) {
+                    Ok(()) => self.context.info(format!("Removed {}", aref)),
+                    Err(err) => self.context.error(err),
                 }
             }
             EditorAction::OpenChangeBlockKindPrompt(aref) => {

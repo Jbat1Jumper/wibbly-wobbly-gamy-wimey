@@ -54,7 +54,7 @@ impl Plugin for PlaydateSkeletonsPlugin {
     fn build(&self, app: &mut AppBuilder) {
         app
             // .require(RootUiPlugin)
-            .insert_resource(CurrentModel(Box::new(mursten::two_and_two_is_four_model())))
+            .insert_resource(CurrentModel(Box::new(mursten::and_one_more_is_five_model())))
             .insert_resource(ModelEditor::default())
             .add_system(mursten_model_editor.system())
             .add_startup_system(on_startup.system())
