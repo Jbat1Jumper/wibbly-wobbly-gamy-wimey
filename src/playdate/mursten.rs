@@ -123,6 +123,38 @@ pub trait Model: Send + Sync {
         Ok(())
     }
 
+    fn safely_remove_artifact(&mut self, aref: &ArtifactReference) -> Result<(), String> {
+        if self.is_all_valid() {
+
+            let mut deps = self.direct_dependents(aref);
+            if deps.is_empty() {
+                self.remove_artifact(&aref);
+                Ok(())
+            } else {
+                // TODO: This is probably implemented in some lib. If not, is worth moving to a
+                // prelude as it will be probably used in many places.
+                let references: String = if deps.len() == 1 {
+                    deps.first().unwrap().0.clone()
+                } else {
+                    deps.sort_by(|a, b| a.0.cmp(&b.0));
+                    let all_but_last = deps.iter()
+                        .rev()
+                        .skip(1)
+                        .rev()
+                        .cloned()
+                        .map(|dep_aref| dep_aref.0)
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let last = deps.last().unwrap().0.clone();
+                    format!("{} and {}", all_but_last, last)
+                };
+                Err(format!("Cannot safely remove {} because is referenced by {}", aref, references))
+            }
+        } else {
+            Err("Cannot safely remove an artifact from an invalid model".into())
+        }
+    }
+
     fn main_slot_kind_of(&self, aref: &ArtifactReference) -> Result<SlotKind, GettingKindOfError> {
         self.main_slot_kind_of_with_breadcrumb(aref, vec![])
     }
@@ -153,7 +185,7 @@ pub trait Model: Send + Sync {
         &self,
         aref: &ArtifactReference,
     ) -> Result<HashMap<SlotName, SlotKind>, GettingSlotOfError> {
-        match self.get_artifact(aref).unwrap() {
+        match self.get_artifact(aref).ok_or(GettingSlotOfError)? {
             Artifact::Block(ref block) => Ok(block.slots.clone()),
             Artifact::Structure(structure) => {
                 if *aref == structure.a_ref {
@@ -338,6 +370,7 @@ fn a_block_with_a_slot() {
         }),
     );
     model.validate_model().unwrap();
+    assert!(model.is_all_valid());
     assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("A"));
     assert_eq!(model.slots_of(&ar("a")).unwrap()[&sn("1")], sk("A"));
 
@@ -358,7 +391,7 @@ fn a_structure_depending_on_an_unexistent_artifact() {
         }),
     );
     model.validate_model().expect_err("Should fail");
-
+    assert!(!model.is_all_valid());
     assert!(model.list_artifacts().contains(&ar("a")));
     assert!(model.get_artifact(&ar("a")).unwrap().composite());
 }
@@ -556,7 +589,73 @@ fn two_and_two_is_four() {
 }
 
 #[test]
+fn cannot_safely_remove_an_artifact_from_an_invalid_model() {
+    let mut model = two_and_two_is_four_model();
+    model.remove_artifact(&ar("zero"));
+
+    let res = model.safely_remove_artifact(&ar("number_4"));
+    assert_eq!(
+        res,
+        Err("Cannot safely remove an artifact from an invalid model".into())
+    );
+    assert!(model.list_artifacts().contains(&ar("number_4")));
+}
+
+#[test]
+fn can_safely_remove_something_that_is_not_referenced_anywhere() {
+    let mut model = two_and_two_is_four_model();
+    let res = model.safely_remove_artifact(&ar("number_4"));
+    assert_eq!(res, Ok(()));
+    assert!(!model.list_artifacts().contains(&ar("number_4")));
+}
+
+#[test]
+fn cannot_remove_an_artifact_that_is_referenced_by_a_structure() {
+    let mut model = two_and_two_is_four_model();
+    let res = model.safely_remove_artifact(&ar("zero"));
+    assert_eq!(
+        res,
+        Err("Cannot safely remove zero because is referenced by number_4".into())
+    );
+    assert!(model.list_artifacts().contains(&ar("zero")));
+    assert!(model.list_artifacts().contains(&ar("number_4")));
+}
+
+pub fn and_one_more_is_five_model() -> InMemoryModel {
+    let mut model = two_and_two_is_four_model();
+    model.set_artifact(
+        ar("number_5"),
+        Artifact::Structure(Structure {
+            a_ref: ar("successor"),
+            c: hashmap! {
+                sn("x") => Connection::Structure(Structure {
+                    a_ref: ar("number_4"),
+                    c: hashmap!{ },
+                })
+            },
+        }),
+    );
+    model
+}
+
+#[test]
+fn cannot_remove_another_artifact_that_is_referenced_by_multiple_structures() {
+    let mut model = and_one_more_is_five_model();
+    let res = model.safely_remove_artifact(&ar("successor"));
+    assert_eq!(
+        res,
+        Err("Cannot safely remove successor because is referenced by number_5 and plus_2".into())
+    );
+    assert!(model.list_artifacts().contains(&ar("zero")));
+    assert!(model.list_artifacts().contains(&ar("number_4")));
+}
+
+
+#[test]
 #[ignore]
-fn xxx() {
+fn roadmap() {
+    todo!("Safely recursively rename an artifact slot name (w/explainatory error)");
+    todo!("Define commands and events (results of those commands)");
+
     todo!("Assert that structure expansion equals to an equivalent structure depending only on blocks");
 }
