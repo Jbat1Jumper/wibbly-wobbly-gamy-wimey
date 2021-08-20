@@ -20,7 +20,11 @@ pub struct EditorContext {
 #[derive(Debug)]
 enum EditorState {
     Listing,
+    // TODO: Change strings to domain types
     AddingABlock(String, String),
+    ChangingBlockKind(ArtifactReference, String),
+    AddingSlotToBlock(ArtifactReference, String, String),
+    RenamingBlockSlot(ArtifactReference, SlotName, String),
 }
 
 impl Default for EditorState {
@@ -35,6 +39,12 @@ pub enum EditorAction {
     OpenAddBlockPrompt,
     ConfirmAddBlock(String, String),
     SafelyDeleteArtifact(ArtifactReference),
+    OpenChangeBlockKindPrompt(ArtifactReference),
+    OpenAddSlotToBlockPrompt(ArtifactReference),
+    ConfirmChangeBlockKind(ArtifactReference, SlotKind),
+    ConfirmAddSlotToBlock(ArtifactReference, SlotName, SlotKind),
+    OpenRenameBlockSlotPrompt(ArtifactReference, SlotName),
+    ConfirmRenameBlockSlot(ArtifactReference, SlotName, SlotName),
 }
 
 #[derive(Debug)]
@@ -61,6 +71,10 @@ impl EditorState {
     pub fn show(&mut self, context: &mut EditorContext, model: &dyn Model, ui: &mut Ui) {
         context.model_is_valid = model.validate_model().is_ok();
         match self {
+            // TODO: EditorState might be a trait, but it needs to define a way of dealing with
+            // nested editor states. This seems closely related to the idea of ui components, but
+            // using egui in this case. For now, is better to wait and see which patterns appear in
+            // the code.
             EditorState::Listing => {
                 if ui.button("Add block").clicked() {
                     context.should(EditorAction::OpenAddBlockPrompt);
@@ -86,18 +100,65 @@ impl EditorState {
                     ));
                 }
             }
+            EditorState::ChangingBlockKind(aref, ref mut new_slot_kind) => {
+                ui.label(format!("New main slot kind for {}:", aref));
+                ui.text_edit_singleline(new_slot_kind);
+                ui.separator();
+                if ui.button("Cancel").clicked() {
+                    context.should(EditorAction::GoToListing);
+                }
+                if ui.button("Change").clicked() {
+                    context.should(EditorAction::ConfirmChangeBlockKind(
+                        aref.clone(),
+                        sk(&*new_slot_kind),
+                    ));
+                }
+            }
+            EditorState::AddingSlotToBlock(aref, ref mut slot_name, ref mut slot_kind) => {
+                ui.label(format!("Name for the new slot in {}:", aref));
+                ui.text_edit_singleline(slot_name);
+                ui.label("Kind for the new slot:");
+                ui.text_edit_singleline(slot_kind);
+                ui.separator();
+                if ui.button("Cancel").clicked() {
+                    context.should(EditorAction::GoToListing);
+                }
+                if ui.button("Add").clicked() {
+                    context.should(EditorAction::ConfirmAddSlotToBlock(
+                        aref.clone(),
+                        sn(&*slot_name),
+                        sk(&*slot_kind)
+                    ));
+                }
+            }
+            EditorState::RenamingBlockSlot(ref aref, ref slot_name, ref mut slot_new_name) => {
+                ui.label(format!("You are renaming {} slot in {}", slot_name, aref));
+                ui.label("New name for the slot:");
+                ui.text_edit_singleline(slot_new_name);
+                ui.separator();
+                if ui.button("Cancel").clicked() {
+                    context.should(EditorAction::GoToListing);
+                }
+                if ui.button("Rename").clicked() {
+                    context.should(EditorAction::ConfirmRenameBlockSlot(
+                        aref.clone(),
+                        slot_name.clone(),
+                        sn(&*slot_new_name)
+                    ));
+                }
+            }
         };
 
         ui.separator();
         if context.model_is_valid {
-            ui.label("Model is valid");
+            ui.label("🌑 Model is valid");
         } else {
-            ui.colored_label(Color32::RED, "Model is not valid");
+            ui.colored_label(Color32::RED, "🌕 Model is not valid");
         }
         if let Some(entry) = context.log.last() {
             match entry {
-                EditorLog::Info(text) => ui.label(text),
-                EditorLog::Error(text) => ui.colored_label(Color32::RED, text),
+                EditorLog::Info(text) => ui.label(format!("💬 {}", text)),
+                EditorLog::Error(text) => ui.colored_label(Color32::RED, format!("💢 {}", text)),
             };
         }
     }
@@ -112,25 +173,48 @@ impl EditorState {
         ui.collapsing(format!("{} {}", prefix, aref), |ui| {
             ui.horizontal(|ui| {
                 ui.vertical(|ui| match artifact {
-                    Artifact::Block(b) => self.detail_block(context, model, ui, b),
+                    Artifact::Block(b) => self.detail_block(context, model, ui, aref, b),
                     Artifact::Structure(s) => self.detail_structure(context, model, ui, s),
                 });
                 ui.with_layout(Layout::top_down(Align::Max), |ui| {
-                    if ui.small_button("T").clicked() {
-                        context.should(EditorAction::SafelyDeleteArtifact(aref.clone()))
+                    self.actions_artifact(context, model, ui, aref);
+                    match artifact {
+                        Artifact::Block(b) => self.actions_block(context, model, ui, aref, b),
+                        Artifact::Structure(s) => self.actions_stucture(context, model, ui, aref, s),
                     }
                 })
             })
         });
     }
 
-    fn detail_block(&mut self, context: &mut EditorContext, model: &dyn Model, ui: &mut Ui, block: &Block) {
+    fn actions_artifact(&mut self, context: &mut EditorContext, _model: &dyn Model, ui: &mut Ui, aref: &ArtifactReference) {
+        if ui.small_button("delete").clicked() {
+            context.should(EditorAction::SafelyDeleteArtifact(aref.clone()))
+        }
+    }
+
+    fn actions_block(&mut self, context: &mut EditorContext, _model: &dyn Model, ui: &mut Ui, aref: &ArtifactReference, _block: &Block) {
+        if ui.small_button("change kind").clicked() {
+            context.should(EditorAction::OpenChangeBlockKindPrompt(aref.clone()))
+        }
+        if ui.small_button("add slot").clicked() {
+            context.should(EditorAction::OpenAddSlotToBlockPrompt(aref.clone()))
+        }
+    }
+
+    fn actions_stucture(&mut self, _context: &mut EditorContext, _model: &dyn Model, _ui: &mut Ui, _aref: &ArtifactReference, _structure: &Structure) {
+    }
+
+    fn detail_block(&mut self, context: &mut EditorContext, _model: &dyn Model, ui: &mut Ui, aref: &ArtifactReference, block: &Block) {
         ui.colored_label(Color32::LIGHT_BLUE, format!("{}", block.main_slot_kind));
 
         for (slot_name, slot_kind) in block.slots.iter() {
             ui.horizontal(|ui| {
                 ui.label(format!("{}:", slot_name));
-                ui.colored_label(Color32::RED, format!("{}", slot_kind));
+                ui.colored_label(Color32::YELLOW, format!("{}", slot_kind));
+                if ui.small_button("rename").clicked() {
+                    context.should(EditorAction::OpenRenameBlockSlotPrompt(aref.clone(), slot_name.clone()));
+                }
             });
         }
     }
@@ -150,7 +234,7 @@ impl EditorState {
                             slots.into_iter().find(|(sn, _)| sn == slot_name).unwrap();
                         ui.horizontal(|ui| {
                             ui.label(format!("{} <- {}:", slot_name, s));
-                            ui.colored_label(Color32::RED, format!("{}", slot_kind));
+                            ui.colored_label(Color32::YELLOW, format!("{}", slot_kind));
                         });
                     } else {
                         ui.label(format!("{} <- {}", slot_name, s));
@@ -171,10 +255,14 @@ impl EditorState {
 }
 
 impl ModelEditor {
+
     pub fn title(&mut self) -> &str {
         match self.state {
             EditorState::Listing => "Showing existing models",
             EditorState::AddingABlock(_, _) => "Adding a new block",
+            EditorState::ChangingBlockKind(_, _) => "Changing block kind",
+            EditorState::AddingSlotToBlock(_, _, _) => "Adding slot to a block",
+            EditorState::RenamingBlockSlot(_, _, _) => "Renaming block slot",
         }
     }
 
@@ -239,6 +327,78 @@ impl ModelEditor {
                     ))
                 }
             }
+            EditorAction::OpenChangeBlockKindPrompt(aref) => {
+                self.state =
+                    EditorState::ChangingBlockKind(aref, "NewBlockKind".into());
+            }
+            EditorAction::ConfirmChangeBlockKind(aref, new_block_kind) => {
+                // TODO: Getting the artifact to modify it and send it again modified is a bad
+                // smell. This could be directly an action of the model.
+                let block = match model.get_artifact(&aref) {
+                    None => {
+                        self.context.error(format!("Artifact {} does not exists", aref));
+                        return;
+                    },
+                    Some(Artifact::Structure(_)) => {
+                        self.context.error(format!("Artifact {} is not a block", aref));
+                        return;
+                    },
+                    Some(Artifact::Block(block)) => {
+                        block.clone()
+                    }
+                };
+                model.set_artifact(aref.clone(), Artifact::Block(Block { main_slot_kind: new_block_kind.clone(), ..block.clone() }));
+
+                if !model.is_all_valid() {
+                    self.context.error(format!("Changing block kind would invalidate model"));
+                    model.set_artifact(aref.clone(), Artifact::Block(block));
+                    return;
+                }
+
+                self.context.info(format!("Changed {} kind to {}", aref, new_block_kind));
+                self.state = EditorState::Listing;
+            }
+            EditorAction::OpenAddSlotToBlockPrompt(aref) => {
+                self.state =
+                    EditorState::AddingSlotToBlock(aref, "slot_name".into(), "SlotKind".into());
+            }
+            EditorAction::ConfirmAddSlotToBlock(aref, slot_name, slot_kind) => {
+                // TODO: Getting the artifact to modify it and send it again modified is a bad
+                // smell. This could be directly an action of the model. Plus, this is already
+                // repeated code.
+                let mut block = match model.get_artifact(&aref) {
+                    None => {
+                        self.context.error(format!("Artifact {} does not exists", aref));
+                        return;
+                    },
+                    Some(Artifact::Structure(_)) => {
+                        self.context.error(format!("Artifact {} is not a block", aref));
+                        return;
+                    },
+                    Some(Artifact::Block(block)) => {
+                        block.clone()
+                    }
+                };
+
+                if block.slots.contains_key(&slot_name) {
+                    self.context.error(format!("Slot {} already exists in {}", &slot_name, &aref));
+                    return;
+                }
+
+                self.context.info(format!("Added slot {} of kind {} to {}", &slot_name, &slot_kind, &aref));
+                block.slots.insert(slot_name, slot_kind);
+                model.set_artifact(aref.clone(), Artifact::Block(block));
+                // Yes, this operation most probably invalidates the model. 
+
+                self.state = EditorState::Listing;
+            }
+            EditorAction::OpenRenameBlockSlotPrompt(aref, slot_name) => {
+                self.state =
+                    EditorState::RenamingBlockSlot(aref, slot_name, "new_slot_name".into());
+            }
+            EditorAction::ConfirmRenameBlockSlot(aref, slot_name, slot_new_name) => {
+                todo!();
+            }
         }
     }
 }
@@ -246,8 +406,6 @@ impl ModelEditor {
 /*
  * TODO:
  *
- * - change the type of a block
- * - add a slot to a block
  * - rename a slot of a block
  * - delete a slot from a block
  *

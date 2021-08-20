@@ -197,7 +197,7 @@ pub trait Model: Send + Sync {
                 let mut ds = vec![];
                 while !structures_to_see.is_empty() {
                     let s = structures_to_see.pop().unwrap();
-                    ds.push(s.a_ref);
+                    ds.push(s.a_ref.clone());
                     for c in s.c.values() {
                         match c {
                             Connection::Structure(s2) => structures_to_see.push(s2),
@@ -206,28 +206,37 @@ pub trait Model: Send + Sync {
                     }
                 }
                 ds
-            },
+            }
             Artifact::Block(b) => vec![],
         }
     }
 
     fn dependencies(&self, aref: &ArtifactReference) -> Vec<ArtifactReference> {
-        let ds = self.direct_dependencies(aref);
-        let tds: Vec<_> = ds.iter().map(|aref2| self.dependencies(aref2)).flatten().collect();
+        let mut ds = self.direct_dependencies(aref);
+        let tds: Vec<_> = ds
+            .iter()
+            .map(|aref2| self.dependencies(aref2))
+            .flatten()
+            .collect();
         ds.extend(tds);
         ds.dedup();
         ds
     }
 
     fn direct_dependents(&self, aref: &ArtifactReference) -> Vec<ArtifactReference> {
-        for other_aref in self.list_artifacts() {
-            if self.direct_dependencies(&other_aref).contains(aref)
-        }
+        self.list_artifacts()
+            .into_iter()
+            .filter(|other_aref| self.direct_dependencies(&other_aref).contains(aref))
+            .collect()
     }
 
     fn dependents(&self, aref: &ArtifactReference) -> Vec<ArtifactReference> {
-        let ds = self.direct_dependents(aref);
-        let tds: Vec<_> = ds.iter().map(|aref2| self.dependents(aref2)).flatten().collect();
+        let mut ds = self.direct_dependents(aref);
+        let tds: Vec<_> = ds
+            .iter()
+            .map(|aref2| self.dependents(aref2))
+            .flatten()
+            .collect();
         ds.extend(tds);
         ds.dedup();
         ds
