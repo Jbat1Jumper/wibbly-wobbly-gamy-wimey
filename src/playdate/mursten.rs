@@ -85,8 +85,10 @@ pub enum GettingKindOfError {
     RecursionDetected(Vec<ArtifactReference>, ArtifactReference),
 }
 #[derive(Debug)]
-pub struct GettingSlotOfError;
+pub struct GettingSlotOfError(String);
 
+// TODO: Indicate which methods are safe to use (do not invalidate model), and which ones can panic or
+// overflow if the model is not valid.
 pub trait Model: Send + Sync {
     fn set_artifact(&mut self, aref: ArtifactReference, artifact: Artifact);
     fn remove_artifact(&mut self, aref: &ArtifactReference);
@@ -125,7 +127,6 @@ pub trait Model: Send + Sync {
 
     fn safely_remove_artifact(&mut self, aref: &ArtifactReference) -> Result<(), String> {
         if self.is_all_valid() {
-
             let mut deps = self.direct_dependents(aref);
             if deps.is_empty() {
                 self.remove_artifact(&aref);
@@ -137,7 +138,8 @@ pub trait Model: Send + Sync {
                     deps.first().unwrap().0.clone()
                 } else {
                     deps.sort_by(|a, b| a.0.cmp(&b.0));
-                    let all_but_last = deps.iter()
+                    let all_but_last = deps
+                        .iter()
                         .rev()
                         .skip(1)
                         .rev()
@@ -148,10 +150,78 @@ pub trait Model: Send + Sync {
                     let last = deps.last().unwrap().0.clone();
                     format!("{} and {}", all_but_last, last)
                 };
-                Err(format!("Cannot safely remove {} because is referenced by {}", aref, references))
+                Err(format!(
+                    "Cannot safely remove {} because is referenced by {}",
+                    aref, references
+                ))
             }
         } else {
             Err("Cannot safely remove an artifact from an invalid model".into())
+        }
+    }
+
+    fn rename_slot(
+        &mut self,
+        aref: &ArtifactReference,
+        old_slot_name: &SlotName,
+        new_slot_name: SlotName,
+    ) -> Result<(), String> {
+        match self
+            .get_artifact(aref)
+            .ok_or_else(|| format!("Artifact {} does not exists ", aref))?
+        {
+            Artifact::Block(ref block) => {
+                let mut block = block.clone();
+                if let Some(slot_kind) = block.slots.get(old_slot_name).cloned() {
+                    if !block.slots.contains_key(&new_slot_name) {
+                        block.slots.remove(old_slot_name);
+                        block.slots.insert(new_slot_name.clone(), slot_kind);
+                        self.set_artifact(aref.clone(), Artifact::Block(block));
+                        Ok(())
+                    } else {
+                        Err(format!(
+                            "Artifact {} already has a slot named {}",
+                            aref, new_slot_name
+                        ))
+                    }
+                } else {
+                    Err(format!(
+                        "Slot {} does not exists in {}",
+                        old_slot_name, aref
+                    ))
+                }
+            }
+            Artifact::Structure(_structure) => todo!(),
+        }
+        .and_then(|_| {
+            for dref in self.direct_dependents(aref) {
+                if let Some(Artifact::Structure(mut structure)) = self.get_artifact(&dref).cloned() {
+                    self.rename_slot_in_structure(&mut structure, aref, old_slot_name, new_slot_name.clone());
+                    self.set_artifact(dref, Artifact::Structure(structure));
+                } else {
+                    unreachable!()
+                }
+            }
+            Ok(())
+        })
+    }
+
+    fn rename_slot_in_structure(
+        &mut self,
+        structure: &mut Structure,
+        aref: &ArtifactReference,
+        old_slot_name: &SlotName,
+        new_slot_name: SlotName,
+    ) {
+        if structure.a_ref == *aref {
+            let connection = structure.disconnect(Location(vec![]), old_slot_name);
+            structure.connect(Location(vec![]), &new_slot_name, connection);
+        }
+
+        for (_slot_name, connection) in structure.c.iter_mut() {
+            if let Connection::Structure(ref mut substruct) = connection {
+                self.rename_slot_in_structure(substruct, aref, old_slot_name, new_slot_name.clone());
+            }
         }
     }
 
@@ -185,11 +255,17 @@ pub trait Model: Send + Sync {
         &self,
         aref: &ArtifactReference,
     ) -> Result<HashMap<SlotName, SlotKind>, GettingSlotOfError> {
-        match self.get_artifact(aref).ok_or(GettingSlotOfError)? {
+        match self.get_artifact(aref).ok_or(GettingSlotOfError(format!(
+            "Could not get artifact {}",
+            aref
+        )))? {
             Artifact::Block(ref block) => Ok(block.slots.clone()),
             Artifact::Structure(structure) => {
                 if *aref == structure.a_ref {
-                    return Err(GettingSlotOfError);
+                    return Err(GettingSlotOfError(format!(
+                        "Structure {} references to itself",
+                        aref
+                    )));
                 }
                 self.slots_of_structure(structure)
             }
@@ -215,7 +291,12 @@ pub trait Model: Send + Sync {
                         }
                     }
                 },
-                None => return Err(GettingSlotOfError),
+                None => {
+                    return Err(GettingSlotOfError(format!(
+                        "Slot {} is not connected to anything",
+                        slot_name
+                    )))
+                }
             }
         }
 
@@ -239,7 +320,7 @@ pub trait Model: Send + Sync {
                 }
                 ds
             }
-            Artifact::Block(b) => vec![],
+            Artifact::Block(_) => vec![],
         }
     }
 
@@ -296,12 +377,12 @@ impl Structure {
         todo!();
     }
 
-    fn replace(&mut self, target: Location, new_structure: Structure) {
-        todo!();
+    fn disconnect(&mut self, target: Location, slot_name: &SlotName) -> Connection {
+        self.c.remove(slot_name).unwrap()   
     }
 
-    fn connect(&mut self, target: Location, slot_name: SlotName, connection: Connection) {
-        todo!();
+    fn connect(&mut self, target: Location, slot_name: &SlotName, connection: Connection) {
+        self.c.insert(slot_name.clone(), connection);
     }
 }
 
@@ -320,6 +401,7 @@ impl Model for InMemoryModel {
     fn get_artifact(&self, aref: &ArtifactReference) -> Option<&Artifact> {
         self.0.get(aref)
     }
+
     fn list_artifacts(&self) -> Vec<ArtifactReference> {
         self.0.keys().cloned().collect()
     }
@@ -606,6 +688,7 @@ fn can_safely_remove_something_that_is_not_referenced_anywhere() {
     let mut model = two_and_two_is_four_model();
     let res = model.safely_remove_artifact(&ar("number_4"));
     assert_eq!(res, Ok(()));
+    model.validate_model().unwrap();
     assert!(!model.list_artifacts().contains(&ar("number_4")));
 }
 
@@ -617,6 +700,7 @@ fn cannot_remove_an_artifact_that_is_referenced_by_a_structure() {
         res,
         Err("Cannot safely remove zero because is referenced by number_4".into())
     );
+    model.validate_model().unwrap();
     assert!(model.list_artifacts().contains(&ar("zero")));
     assert!(model.list_artifacts().contains(&ar("number_4")));
 }
@@ -646,16 +730,82 @@ fn cannot_remove_another_artifact_that_is_referenced_by_multiple_structures() {
         res,
         Err("Cannot safely remove successor because is referenced by number_5 and plus_2".into())
     );
+    model.validate_model().unwrap();
     assert!(model.list_artifacts().contains(&ar("zero")));
     assert!(model.list_artifacts().contains(&ar("number_4")));
 }
 
+#[test]
+fn can_rename_slot_of_unused_block() {
+    let mut model = peano_model();
+    model
+        .rename_slot(&ar("successor"), &sn("x"), sn("y"))
+        .expect("Should be able to rename it");
+    assert!(!model
+        .slots_of(&ar("successor"))
+        .unwrap()
+        .contains_key(&sn("x")));
+    assert!(model
+        .slots_of(&ar("successor"))
+        .unwrap()
+        .contains_key(&sn("y")));
+}
+
+#[test]
+fn cannot_rename_slot_into_an_already_existent_name() {
+    // This includes renaming a slot to the same name for now
+    let mut model = peano_model();
+    let res = model.rename_slot(&ar("successor"), &sn("x"), sn("x"));
+
+    assert_eq!(
+        res,
+        Err("Artifact successor already has a slot named 'x".into())
+    );
+    model.validate_model().unwrap();
+    assert!(model
+        .slots_of(&ar("successor"))
+        .unwrap()
+        .contains_key(&sn("x")));
+}
+
+#[test]
+fn cannot_rename_an_unexistent_slot() {
+    let mut model = peano_model();
+    let res = model.rename_slot(&ar("zero"), &sn("z"), sn("y"));
+
+    assert_eq!(res, Err("Slot 'z does not exists in zero".into()));
+    model.validate_model().unwrap();
+    assert!(model.slots_of(&ar("zero")).unwrap().is_empty());
+}
+
+#[test]
+fn renaming_slot_name_changes_dependant_structures() {
+    let mut model = two_and_two_is_four_model();
+    model
+        .rename_slot(&ar("successor"), &sn("x"), sn("y"))
+        .expect("Should be able to rename it");
+    model.validate_model().unwrap();
+    assert!(!model
+        .slots_of(&ar("successor"))
+        .unwrap()
+        .contains_key(&sn("x")));
+    assert!(model
+        .slots_of(&ar("successor"))
+        .unwrap()
+        .contains_key(&sn("y")));
+    assert_eq!(model.slots_of(&ar("plus_2")).unwrap().len(), 1);
+    assert!(model
+        .slots_of(&ar("plus_2"))
+        .unwrap()
+        .contains_key(&sn("x")));
+}
 
 #[test]
 #[ignore]
 fn roadmap() {
     todo!("Safely recursively rename an artifact slot name (w/explainatory error)");
     todo!("Define commands and events (results of those commands)");
+    todo!("Check if a recursion can happen if the mutal recursion loop is longer (add breadcrumb to implementation and also improve errors)");
 
     todo!("Assert that structure expansion equals to an equivalent structure depending only on blocks");
 }

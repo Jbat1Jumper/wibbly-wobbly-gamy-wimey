@@ -319,7 +319,8 @@ impl ModelEditor {
             }
             EditorAction::ConfirmChangeBlockKind(aref, new_block_kind) => {
                 // TODO: Getting the artifact to modify it and send it again modified is a bad
-                // smell. This could be directly an action of the model.
+                // smell. This could be directly an action of the model. But at the same time, 
+                // changing a block kind might not be a good use case.
                 let block = match model.get_artifact(&aref) {
                     None => {
                         self.context.error(format!("Artifact {} does not exists", aref));
@@ -383,7 +384,13 @@ impl ModelEditor {
                     EditorState::RenamingBlockSlot(aref, slot_name, "new_slot_name".into());
             }
             EditorAction::ConfirmRenameBlockSlot(aref, slot_name, slot_new_name) => {
-                todo!();
+                match model.rename_slot(&aref, &slot_name, slot_new_name.clone()) {
+                    Ok(()) => {
+                        self.context.info(format!("Renamed {} to {} in {}", slot_name, slot_new_name, aref));
+                        self.state = EditorState::Listing;
+                    }
+                    Err(err) => self.context.error(err),
+                }
             }
         }
     }
