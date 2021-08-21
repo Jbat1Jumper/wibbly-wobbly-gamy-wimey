@@ -38,13 +38,14 @@ pub enum EditorAction {
     GoToListing,
     OpenAddBlockPrompt,
     ConfirmAddBlock(String, String),
-    SafelyDeleteArtifact(ArtifactReference),
+    SafelyRemoveArtifact(ArtifactReference),
     OpenChangeBlockKindPrompt(ArtifactReference),
     OpenAddSlotToBlockPrompt(ArtifactReference),
     ConfirmChangeBlockKind(ArtifactReference, SlotKind),
     ConfirmAddSlotToBlock(ArtifactReference, SlotName, SlotKind),
     OpenRenameBlockSlotPrompt(ArtifactReference, SlotName),
     ConfirmRenameBlockSlot(ArtifactReference, SlotName, SlotName),
+    RemoveBlockSlot(ArtifactReference, SlotName),
 }
 
 #[derive(Debug)]
@@ -189,7 +190,7 @@ impl EditorState {
 
     fn actions_artifact(&mut self, context: &mut EditorContext, _model: &dyn Model, ui: &mut Ui, aref: &ArtifactReference) {
         if ui.small_button("delete").clicked() {
-            context.should(EditorAction::SafelyDeleteArtifact(aref.clone()))
+            context.should(EditorAction::SafelyRemoveArtifact(aref.clone()))
         }
     }
 
@@ -214,6 +215,9 @@ impl EditorState {
                 ui.colored_label(Color32::YELLOW, format!("{}", slot_kind));
                 if ui.small_button("rename").clicked() {
                     context.should(EditorAction::OpenRenameBlockSlotPrompt(aref.clone(), slot_name.clone()));
+                }
+                if ui.small_button("delete").clicked() {
+                    context.should(EditorAction::RemoveBlockSlot(aref.clone(), slot_name.clone()));
                 }
             });
         }
@@ -307,7 +311,7 @@ impl ModelEditor {
                 self.context.info(format!("Added block {} with kind {}", aref, slot_kind));
                 self.state = EditorState::Listing;
             }
-            EditorAction::SafelyDeleteArtifact(aref) => {
+            EditorAction::SafelyRemoveArtifact(aref) => {
                 match model.safely_remove_artifact(&aref) {
                     Ok(()) => self.context.info(format!("Removed {}", aref)),
                     Err(err) => self.context.error(err),
@@ -392,15 +396,21 @@ impl ModelEditor {
                     Err(err) => self.context.error(err),
                 }
             }
+            EditorAction::RemoveBlockSlot(aref, slot_name) => {
+                match model.safely_remove_block_slot(&aref, &slot_name) {
+                    Ok(()) => {
+                        self.context.info(format!("Removed {} from {}", slot_name, aref));
+                        self.state = EditorState::Listing;
+                    }
+                    Err(err) => self.context.error(err),
+                }
+            },
         }
     }
 }
 
 /*
  * TODO:
- *
- * - rename a slot of a block
- * - delete a slot from a block
  *
  * - see disonnected slots
  *
@@ -409,6 +419,7 @@ impl ModelEditor {
  * - rename a slot of a structure
  * - connect an artifact to a slot
  * - disconnect an artifact from a slot
+ *
  *
  * - be able to (safely) edit a structure
  *     - change artifact reference
