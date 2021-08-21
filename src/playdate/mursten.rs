@@ -136,9 +136,18 @@ pub trait Model: Send + Sync {
 
         match self.get_artifact(aref) {
             Some(Artifact::Block(block)) => {
-                let mut deps: Vec<_> = self.direct_dependents(aref).into_iter().filter(|dref| self.structure_references_artifact_slot(dref, aref, slot_name)).collect();
-                if deps.is_empty()
-                {
+                let mut deps: Vec<_> = self
+                    .direct_dependents(aref)
+                    .into_iter()
+                    .filter(|dref| {
+                        if let Artifact::Structure(structure) = self.get_artifact(dref).unwrap() {
+                            self.structure_references_artifact_slot(structure, aref, slot_name)
+                        } else {
+                            unreachable!("A block cannot be a direct dependant of aref")
+                        }
+                    })
+                    .collect();
+                if deps.is_empty() {
                     let mut block = block.clone(); // TODO: This unnecesary memory allocations could go away with a `self.get_artifact_mut`.
                     match block.slots.remove(slot_name) {
                         Some(_slot_kind) => {
@@ -166,7 +175,10 @@ pub trait Model: Send + Sync {
                         let last = deps.last().unwrap().0.clone();
                         format!("{} and {}", all_but_last, last)
                     };
-                    Err(format!("Cannot remove slot {} from {} because is used by {}", slot_name, aref, references))
+                    Err(format!(
+                        "Cannot remove slot {} from {} because is used by {}",
+                        slot_name, aref, references
+                    ))
                 }
             }
             None => Err(format!("Artifact {} does not exist", aref)),
@@ -176,11 +188,30 @@ pub trait Model: Send + Sync {
 
     fn structure_references_artifact_slot(
         &self,
-        aref: &ArtifactReference,
-        slot_aref: &ArtifactReference,
-        slot_name: &SlotName,
+        structure: &Structure,
+        referenced_slot_aref: &ArtifactReference,
+        referenced_slot_name: &SlotName,
     ) -> bool {
-        true
+        if structure.a_ref == *referenced_slot_aref
+            && structure.c.contains_key(referenced_slot_name)
+        {
+            true
+        } else {
+            let mut substructs = structure.c.iter().filter_map(|(_, c)| {
+                if let Connection::Structure(s) = c {
+                    Some(s)
+                } else {
+                    None
+                }
+            });
+            substructs.any(|substruct| {
+                self.structure_references_artifact_slot(
+                    substruct,
+                    referenced_slot_aref,
+                    referenced_slot_name,
+                )
+            })
+        }
     }
 
     fn safely_remove_artifact(&mut self, aref: &ArtifactReference) -> Result<(), String> {
@@ -361,10 +392,11 @@ pub trait Model: Send + Sync {
                     }
                 },
                 None => {
-                    return Err(GettingSlotOfError(format!(
-                        "Slot {} is not connected to anything",
-                        slot_name
-                    )))
+                    // This is not an error, is just not connected.
+                    // return Err(GettingSlotOfError(format!(
+                    //     "Slot {} is not connected to anything",
+                    //     slot_name
+                    // )))
                 }
             }
         }
@@ -870,7 +902,7 @@ fn renaming_slot_name_changes_dependant_structures() {
 }
 
 #[test]
-fn can_safely_remove_a_slot_if_is_not_used_in_any_strucure() {
+fn can_safely_remove_a_slot_if_its_artifact_is_not_used_by_any_structure() {
     let mut model = peano_model();
     model
         .safely_remove_block_slot(&ar("successor"), &sn("x"))
@@ -937,10 +969,35 @@ fn cannot_delete_slot_if_model_is_not_valid() {
         .contains_key(&sn("x")));
 }
 
+#[test]
+fn can_safely_remove_a_slot_if_is_not_used_in_any_strucure() {
+    let mut model = two_and_two_is_four_model();
+    model.set_artifact(
+        ar("successor"),
+        Artifact::Block(Block {
+            main_slot_kind: sk("Natural"),
+            slots: hashmap! {
+                sn("x") => sk("Natural"),
+                sn("step") => sk("Natural"),
+            },
+        }),
+    );
+    // TODO: Assert that model here is 'disconnected' but not that much invalid
+    model
+        .safely_remove_block_slot(&ar("successor"), &sn("step"))
+        .expect("Should be able to remove it");
+    model.validate_model().unwrap();
+    assert!(model
+        .slots_of(&ar("successor"))
+        .unwrap()
+        .contains_key(&sn("x")));
+    assert_eq!(model.slots_of(&ar("successor")).unwrap().len(), 1);
+}
 
 #[test]
 #[ignore]
 fn roadmap() {
+    todo!("Separate concept of 'disconnected model' from the 'invalid model'");
     todo!("Define commands and events (results of those commands)");
     todo!("Check if a recursion can happen if the mutal recursion loop is longer (add breadcrumb to implementation and also improve errors)");
 
