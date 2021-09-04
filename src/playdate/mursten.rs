@@ -508,490 +508,505 @@ impl Model for InMemoryModel {
     }
 }
 
-fn empty_test_model() -> InMemoryModel {
-    InMemoryModel(hashmap! {})
-}
+pub mod example {
+    use super::*;
 
-#[test]
-fn empty_model_is_valid() {
-    let mut model = empty_test_model();
-    model.validate_model().unwrap();
-    assert!(model.list_artifacts().is_empty());
-}
+    pub fn empty_test_model() -> InMemoryModel {
+        InMemoryModel(hashmap! {})
+    }
 
-#[test]
-fn a_simple_block() {
-    let mut model = empty_test_model();
-    let a = ar("a");
-    model.set_artifact(
-        a.clone(),
-        Artifact::Block(Block {
-            main_slot_kind: sk("A"),
-            slots: hashmap! {},
-        }),
-    );
-    model.validate_model().unwrap();
-    assert_eq!(model.main_slot_kind_of(&a).unwrap(), sk("A"));
-    assert_eq!(model.slots_of(&a).unwrap(), hashmap! {});
+    pub fn peano_model() -> InMemoryModel {
+        let mut model = empty_test_model();
+        model.set_artifact(
+            ar("successor"),
+            Artifact::Block(Block {
+                main_slot_kind: sk("Natural"),
+                slots: hashmap! {
+                    sn("x") => sk("Natural"),
+                },
+            }),
+        );
+        model.set_artifact(
+            ar("zero"),
+            Artifact::Block(Block {
+                main_slot_kind: sk("Natural"),
+                slots: hashmap! {},
+            }),
+        );
+        model
+    }
 
-    let artifact = model.get_artifact(&a).unwrap();
-    assert_eq!(artifact.composite(), false);
+    pub fn peano_eval<M: Model>(aref: &ArtifactReference, model: &M) -> usize {
+        if *aref == ar("number_2") {
+            2
+        } else if *aref == ar("number_4") {
+            4
+        } else {
+            todo!("Not implemented")
+        }
+    }
 
-    assert!(model.list_artifacts().contains(&a));
-}
+    pub fn two_and_two_is_four_model() -> InMemoryModel {
+        let mut model = peano_model();
+        model.set_artifact(
+            ar("plus_2"),
+            Artifact::Structure(Structure {
+                a_ref: ar("successor"),
+                c: hashmap! {
+                    sn("x") => Connection::Structure(Structure {
+                        a_ref: ar("successor"),
+                        c: hashmap!{
+                            sn("x") => Connection::Slot(sn("x"))
+                        }
+                    })
+                },
+            }),
+        );
+        model.set_artifact(
+            ar("number_4"),
+            Artifact::Structure(Structure {
+                a_ref: ar("plus_2"),
+                c: hashmap! {
+                    sn("x") => Connection::Structure(Structure {
+                        a_ref: ar("plus_2"),
+                        c: hashmap!{
+                            sn("x") => Connection::Structure(Structure {
+                                a_ref: ar("zero"),
+                                c: hashmap!{}
+                            })
+                        }
+                    })
+                },
+            }),
+        );
+        model
+    }
 
-#[test]
-fn a_block_with_a_slot() {
-    let mut model = empty_test_model();
-    model.set_artifact(
-        ar("a"),
-        Artifact::Block(Block {
-            main_slot_kind: sk("A"),
-            slots: hashmap! {
-                sn("1") => sk("A")
-            },
-        }),
-    );
-    model.validate_model().unwrap();
-    assert!(model.is_all_valid());
-    assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("A"));
-    assert_eq!(model.slots_of(&ar("a")).unwrap()[&sn("1")], sk("A"));
+    #[test]
+    fn peano_numbers() {
+        let mut model = peano_model();
+        model.set_artifact(
+            ar("number_2"),
+            Artifact::Structure(Structure {
+                a_ref: ar("successor"),
+                c: hashmap! {
+                    sn("x") => Connection::Structure(Structure {
+                        a_ref: ar("successor"),
+                        c: hashmap!{
+                            sn("x") => Connection::Structure(Structure {
+                                a_ref: ar("zero"),
+                                c: hashmap!{}
+                            })
+                        }
+                    })
+                },
+            }),
+        );
+        model.validate_model().unwrap();
+        assert!(model.slots_of(&ar("number_2")).unwrap().is_empty());
+        assert_eq!(peano_eval(&ar("number_2"), &model), 2);
+    }
 
-    let artifact = model.get_artifact(&ar("a")).unwrap();
-    assert_eq!(artifact.composite(), false);
-
-    assert!(model.list_artifacts().contains(&ar("a")));
-}
-
-#[test]
-fn a_structure_depending_on_an_unexistent_artifact() {
-    let mut model = empty_test_model();
-    model.set_artifact(
-        ar("a"),
-        Artifact::Structure(Structure {
-            a_ref: ar("b"),
-            c: hashmap! {},
-        }),
-    );
-    model.validate_model().expect_err("Should fail");
-    assert!(!model.is_all_valid());
-    assert!(model.list_artifacts().contains(&ar("a")));
-    assert!(model.get_artifact(&ar("a")).unwrap().composite());
-}
-
-#[test]
-fn a_structure_using_a_simple_block() {
-    let mut model = empty_test_model();
-    model.set_artifact(
-        ar("b"),
-        Artifact::Block(Block {
-            main_slot_kind: sk("B"),
-            slots: hashmap! {},
-        }),
-    );
-    model.set_artifact(
-        ar("a"),
-        Artifact::Structure(Structure {
-            a_ref: ar("b"),
-            c: hashmap! {},
-        }),
-    );
-    model.validate_model().unwrap();
-
-    assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("B"));
-    assert_eq!(model.slots_of(&ar("a")).unwrap().is_empty(), true);
-}
-
-#[test]
-fn a_structure_using_a_simple_block_remapping_slots() {
-    let mut model = empty_test_model();
-    model.set_artifact(
-        ar("b"),
-        Artifact::Block(Block {
-            main_slot_kind: sk("B"),
-            slots: hashmap! {
-                sn("80") => sk("PROTO")
-            },
-        }),
-    );
-    model.set_artifact(
-        ar("a"),
-        Artifact::Structure(Structure {
-            a_ref: ar("b"),
-            c: hashmap! {
-                sn("80") => Connection::Slot(sn("9980")),
-            },
-        }),
-    );
-    model.validate_model().unwrap();
-
-    assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("B"));
-    assert_eq!(
-        model.slots_of(&ar("a")).unwrap(),
-        hashmap! {sn("9980") => sk("PROTO")}
-    );
-}
-
-#[test]
-fn a_structure_depending_on_itself() {
-    let mut model = empty_test_model();
-    model.set_artifact(
-        ar("a"),
-        Artifact::Structure(Structure {
-            a_ref: ar("a"),
-            c: hashmap! {},
-        }),
-    );
-    model.validate_model().expect_err("Should fail");
-}
-
-#[test]
-fn mutually_recursive_structures() {
-    let mut model = empty_test_model();
-    model.set_artifact(
-        ar("a"),
-        Artifact::Structure(Structure {
-            a_ref: ar("b"),
-            c: hashmap! {},
-        }),
-    );
-    model.set_artifact(
-        ar("b"),
-        Artifact::Structure(Structure {
-            a_ref: ar("a"),
-            c: hashmap! {},
-        }),
-    );
-    model.validate_model().expect_err("Should fail");
-}
-
-pub fn peano_model() -> InMemoryModel {
-    let mut model = empty_test_model();
-    model.set_artifact(
-        ar("successor"),
-        Artifact::Block(Block {
-            main_slot_kind: sk("Natural"),
-            slots: hashmap! {
-                sn("x") => sk("Natural"),
-            },
-        }),
-    );
-    model.set_artifact(
-        ar("zero"),
-        Artifact::Block(Block {
-            main_slot_kind: sk("Natural"),
-            slots: hashmap! {},
-        }),
-    );
-    model
-}
-
-#[test]
-fn peano_numbers() {
-    let mut model = peano_model();
-    model.set_artifact(
-        ar("number_2"),
-        Artifact::Structure(Structure {
-            a_ref: ar("successor"),
-            c: hashmap! {
-                sn("x") => Connection::Structure(Structure {
-                    a_ref: ar("successor"),
-                    c: hashmap!{
-                        sn("x") => Connection::Structure(Structure {
-                            a_ref: ar("zero"),
-                            c: hashmap!{}
-                        })
-                    }
-                })
-            },
-        }),
-    );
-    model.validate_model().unwrap();
-    assert!(model.slots_of(&ar("number_2")).unwrap().is_empty());
-    assert_eq!(peano_eval(&ar("number_2"), &model), 2);
-}
-
-fn peano_eval<M: Model>(aref: &ArtifactReference, model: &M) -> usize {
-    if *aref == ar("number_2") {
-        2
-    } else if *aref == ar("number_4") {
-        4
-    } else {
-        todo!("Not implemented")
+    pub fn and_one_more_is_five_model() -> InMemoryModel {
+        let mut model = two_and_two_is_four_model();
+        model.set_artifact(
+            ar("number_5"),
+            Artifact::Structure(Structure {
+                a_ref: ar("successor"),
+                c: hashmap! {
+                    sn("x") => Connection::Structure(Structure {
+                        a_ref: ar("number_4"),
+                        c: hashmap!{ },
+                    })
+                },
+            }),
+        );
+        model
     }
 }
+#[cfg(test)]
+mod test {
+    use super::*;
+    use super::example::*;
 
-pub fn two_and_two_is_four_model() -> InMemoryModel {
-    let mut model = peano_model();
-    model.set_artifact(
-        ar("plus_2"),
-        Artifact::Structure(Structure {
-            a_ref: ar("successor"),
-            c: hashmap! {
-                sn("x") => Connection::Structure(Structure {
-                    a_ref: ar("successor"),
-                    c: hashmap!{
-                        sn("x") => Connection::Slot(sn("x"))
-                    }
-                })
-            },
-        }),
-    );
-    model.set_artifact(
-        ar("number_4"),
-        Artifact::Structure(Structure {
-            a_ref: ar("plus_2"),
-            c: hashmap! {
-                sn("x") => Connection::Structure(Structure {
-                    a_ref: ar("plus_2"),
-                    c: hashmap!{
-                        sn("x") => Connection::Structure(Structure {
-                            a_ref: ar("zero"),
-                            c: hashmap!{}
-                        })
-                    }
-                })
-            },
-        }),
-    );
-    model
-}
+    #[test]
+    fn empty_model_is_valid() {
+        let mut model = empty_test_model();
+        model.validate_model().unwrap();
+        assert!(model.list_artifacts().is_empty());
+    }
 
-#[test]
-fn two_and_two_is_four() {
-    let mut model = two_and_two_is_four_model();
-    model.validate_model().unwrap();
-    assert_eq!(model.slots_of(&ar("plus_2")).unwrap().keys().count(), 1);
-    assert_eq!(
-        model.slots_of(&ar("plus_2")).unwrap()[&sn("x")],
-        sk("Natural")
-    );
-    assert!(model.slots_of(&ar("number_4")).unwrap().is_empty());
+    #[test]
+    fn a_simple_block() {
+        let mut model = empty_test_model();
+        let a = ar("a");
+        model.set_artifact(
+            a.clone(),
+            Artifact::Block(Block {
+                main_slot_kind: sk("A"),
+                slots: hashmap! {},
+            }),
+        );
+        model.validate_model().unwrap();
+        assert_eq!(model.main_slot_kind_of(&a).unwrap(), sk("A"));
+        assert_eq!(model.slots_of(&a).unwrap(), hashmap! {});
 
-    assert_eq!(peano_eval(&ar("number_4"), &model), 4);
-}
+        let artifact = model.get_artifact(&a).unwrap();
+        assert_eq!(artifact.composite(), false);
 
-#[test]
-fn cannot_safely_remove_an_artifact_from_an_invalid_model() {
-    let mut model = two_and_two_is_four_model();
-    model.remove_artifact(&ar("zero"));
+        assert!(model.list_artifacts().contains(&a));
+    }
 
-    let res = model.safely_remove_artifact(&ar("number_4"));
-    assert_eq!(
-        res,
-        Err("Cannot safely remove an artifact from an invalid model".into())
-    );
-    assert!(model.list_artifacts().contains(&ar("number_4")));
-}
+    #[test]
+    fn a_block_with_a_slot() {
+        let mut model = empty_test_model();
+        model.set_artifact(
+            ar("a"),
+            Artifact::Block(Block {
+                main_slot_kind: sk("A"),
+                slots: hashmap! {
+                    sn("1") => sk("A")
+                },
+            }),
+        );
+        model.validate_model().unwrap();
+        assert!(model.is_all_valid());
+        assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("A"));
+        assert_eq!(model.slots_of(&ar("a")).unwrap()[&sn("1")], sk("A"));
 
-#[test]
-fn can_safely_remove_something_that_is_not_referenced_anywhere() {
-    let mut model = two_and_two_is_four_model();
-    let res = model.safely_remove_artifact(&ar("number_4"));
-    assert_eq!(res, Ok(()));
-    model.validate_model().unwrap();
-    assert!(!model.list_artifacts().contains(&ar("number_4")));
-}
+        let artifact = model.get_artifact(&ar("a")).unwrap();
+        assert_eq!(artifact.composite(), false);
 
-#[test]
-fn cannot_remove_an_artifact_that_is_referenced_by_a_structure() {
-    let mut model = two_and_two_is_four_model();
-    let res = model.safely_remove_artifact(&ar("zero"));
-    assert_eq!(
-        res,
-        Err("Cannot safely remove zero because is referenced by number_4".into())
-    );
-    model.validate_model().unwrap();
-    assert!(model.list_artifacts().contains(&ar("zero")));
-    assert!(model.list_artifacts().contains(&ar("number_4")));
-}
+        assert!(model.list_artifacts().contains(&ar("a")));
+    }
 
-pub fn and_one_more_is_five_model() -> InMemoryModel {
-    let mut model = two_and_two_is_four_model();
-    model.set_artifact(
-        ar("number_5"),
-        Artifact::Structure(Structure {
-            a_ref: ar("successor"),
-            c: hashmap! {
-                sn("x") => Connection::Structure(Structure {
-                    a_ref: ar("number_4"),
-                    c: hashmap!{ },
-                })
-            },
-        }),
-    );
-    model
-}
+    #[test]
+    fn a_structure_depending_on_an_unexistent_artifact() {
+        let mut model = empty_test_model();
+        model.set_artifact(
+            ar("a"),
+            Artifact::Structure(Structure {
+                a_ref: ar("b"),
+                c: hashmap! {},
+            }),
+        );
+        model.validate_model().expect_err("Should fail");
+        assert!(!model.is_all_valid());
+        assert!(model.list_artifacts().contains(&ar("a")));
+        assert!(model.get_artifact(&ar("a")).unwrap().composite());
+    }
 
-#[test]
-fn cannot_remove_another_artifact_that_is_referenced_by_multiple_structures() {
-    let mut model = and_one_more_is_five_model();
-    let res = model.safely_remove_artifact(&ar("successor"));
-    assert_eq!(
-        res,
-        Err("Cannot safely remove successor because is referenced by number_5 and plus_2".into())
-    );
-    model.validate_model().unwrap();
-    assert!(model.list_artifacts().contains(&ar("zero")));
-    assert!(model.list_artifacts().contains(&ar("number_4")));
-}
+    #[test]
+    fn a_structure_using_a_simple_block() {
+        let mut model = empty_test_model();
+        model.set_artifact(
+            ar("b"),
+            Artifact::Block(Block {
+                main_slot_kind: sk("B"),
+                slots: hashmap! {},
+            }),
+        );
+        model.set_artifact(
+            ar("a"),
+            Artifact::Structure(Structure {
+                a_ref: ar("b"),
+                c: hashmap! {},
+            }),
+        );
+        model.validate_model().unwrap();
 
-#[test]
-fn can_rename_slot_of_unused_block() {
-    let mut model = peano_model();
-    model
-        .rename_slot(&ar("successor"), &sn("x"), sn("y"))
-        .expect("Should be able to rename it");
-    assert!(!model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("x")));
-    assert!(model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("y")));
-}
+        assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("B"));
+        assert_eq!(model.slots_of(&ar("a")).unwrap().is_empty(), true);
+    }
 
-#[test]
-fn cannot_rename_slot_into_an_already_existent_name() {
-    // This includes renaming a slot to the same name for now
-    let mut model = peano_model();
-    let res = model.rename_slot(&ar("successor"), &sn("x"), sn("x"));
+    #[test]
+    fn a_structure_using_a_simple_block_remapping_slots() {
+        let mut model = empty_test_model();
+        model.set_artifact(
+            ar("b"),
+            Artifact::Block(Block {
+                main_slot_kind: sk("B"),
+                slots: hashmap! {
+                    sn("80") => sk("PROTO")
+                },
+            }),
+        );
+        model.set_artifact(
+            ar("a"),
+            Artifact::Structure(Structure {
+                a_ref: ar("b"),
+                c: hashmap! {
+                    sn("80") => Connection::Slot(sn("9980")),
+                },
+            }),
+        );
+        model.validate_model().unwrap();
 
-    assert_eq!(
-        res,
-        Err("Artifact successor already has a slot named 'x".into())
-    );
-    model.validate_model().unwrap();
-    assert!(model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("x")));
-}
+        assert_eq!(model.main_slot_kind_of(&ar("a")).unwrap(), sk("B"));
+        assert_eq!(
+            model.slots_of(&ar("a")).unwrap(),
+            hashmap! {sn("9980") => sk("PROTO")}
+        );
+    }
 
-#[test]
-fn cannot_rename_an_unexistent_slot() {
-    let mut model = peano_model();
-    let res = model.rename_slot(&ar("zero"), &sn("z"), sn("y"));
+    #[test]
+    fn a_structure_depending_on_itself() {
+        let mut model = empty_test_model();
+        model.set_artifact(
+            ar("a"),
+            Artifact::Structure(Structure {
+                a_ref: ar("a"),
+                c: hashmap! {},
+            }),
+        );
+        model.validate_model().expect_err("Should fail");
+    }
 
-    assert_eq!(res, Err("Slot 'z does not exists in zero".into()));
-    model.validate_model().unwrap();
-    assert!(model.slots_of(&ar("zero")).unwrap().is_empty());
-}
+    #[test]
+    fn mutually_recursive_structures() {
+        let mut model = empty_test_model();
+        model.set_artifact(
+            ar("a"),
+            Artifact::Structure(Structure {
+                a_ref: ar("b"),
+                c: hashmap! {},
+            }),
+        );
+        model.set_artifact(
+            ar("b"),
+            Artifact::Structure(Structure {
+                a_ref: ar("a"),
+                c: hashmap! {},
+            }),
+        );
+        model.validate_model().expect_err("Should fail");
+    }
 
-#[test]
-fn renaming_slot_name_changes_dependant_structures() {
-    let mut model = two_and_two_is_four_model();
-    model
-        .rename_slot(&ar("successor"), &sn("x"), sn("y"))
-        .expect("Should be able to rename it");
-    model.validate_model().unwrap();
-    assert!(!model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("x")));
-    assert!(model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("y")));
-    assert_eq!(model.slots_of(&ar("plus_2")).unwrap().len(), 1);
-    assert!(model
-        .slots_of(&ar("plus_2"))
-        .unwrap()
-        .contains_key(&sn("x")));
-}
+    #[test]
+    fn two_and_two_is_four() {
+        let mut model = two_and_two_is_four_model();
+        model.validate_model().unwrap();
+        assert_eq!(model.slots_of(&ar("plus_2")).unwrap().keys().count(), 1);
+        assert_eq!(
+            model.slots_of(&ar("plus_2")).unwrap()[&sn("x")],
+            sk("Natural")
+        );
+        assert!(model.slots_of(&ar("number_4")).unwrap().is_empty());
 
-#[test]
-fn can_safely_remove_a_slot_if_its_artifact_is_not_used_by_any_structure() {
-    let mut model = peano_model();
-    model
-        .safely_remove_block_slot(&ar("successor"), &sn("x"))
-        .expect("Should be able to remove it");
-    model.validate_model().unwrap();
-    assert!(model.slots_of(&ar("successor")).unwrap().is_empty());
-}
+        assert_eq!(peano_eval(&ar("number_4"), &model), 4);
+    }
 
-#[test]
-fn cannot_delete_an_unexisting_slot() {
-    let mut model = peano_model();
-    let res = model.safely_remove_block_slot(&ar("zero"), &sn("q"));
-    assert_eq!(res, Err("Block zero does not have a 'q slot".into()));
-    model.validate_model().unwrap();
-    assert!(model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("x")));
-}
+    #[test]
+    fn cannot_safely_remove_an_artifact_from_an_invalid_model() {
+        let mut model = two_and_two_is_four_model();
+        model.remove_artifact(&ar("zero"));
 
-#[test]
-fn cannot_delete_slot_from_an_unexistent_artifact() {
-    let mut model = peano_model();
-    let res = model.safely_remove_block_slot(&ar("wibblidy"), &sn("woob"));
-    assert_eq!(res, Err("Artifact wibblidy does not exist".into()));
-    model.validate_model().unwrap();
-}
+        let res = model.safely_remove_artifact(&ar("number_4"));
+        assert_eq!(
+            res,
+            Err("Cannot safely remove an artifact from an invalid model".into())
+        );
+        assert!(model.list_artifacts().contains(&ar("number_4")));
+    }
 
-#[test]
-fn cannot_delete_slot_from_a_structure() {
-    let mut model = and_one_more_is_five_model();
-    let res = model.safely_remove_block_slot(&ar("plus_2"), &sn("x"));
-    assert_eq!(res, Err("Cannot remove slot of a structure".into()));
-    model.validate_model().unwrap();
-}
+    #[test]
+    fn can_safely_remove_something_that_is_not_referenced_anywhere() {
+        let mut model = two_and_two_is_four_model();
+        let res = model.safely_remove_artifact(&ar("number_4"));
+        assert_eq!(res, Ok(()));
+        model.validate_model().unwrap();
+        assert!(!model.list_artifacts().contains(&ar("number_4")));
+    }
 
-#[test]
-fn cannot_delete_slot_if_some_structure_uses_it() {
-    let mut model = and_one_more_is_five_model();
-    let res = model.safely_remove_block_slot(&ar("successor"), &sn("x"));
-    assert_eq!(
-        res,
-        Err("Cannot remove slot 'x from successor because is used by number_5 and plus_2".into())
-    );
-    model.validate_model().unwrap();
-    assert!(model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("x")));
-}
+    #[test]
+    fn cannot_remove_an_artifact_that_is_referenced_by_a_structure() {
+        let mut model = two_and_two_is_four_model();
+        let res = model.safely_remove_artifact(&ar("zero"));
+        assert_eq!(
+            res,
+            Err("Cannot safely remove zero because is referenced by number_4".into())
+        );
+        model.validate_model().unwrap();
+        assert!(model.list_artifacts().contains(&ar("zero")));
+        assert!(model.list_artifacts().contains(&ar("number_4")));
+    }
 
-#[test]
-fn cannot_delete_slot_if_model_is_not_valid() {
-    let mut model = two_and_two_is_four_model();
-    model.remove_artifact(&ar("plus_2"));
-    let res = model.safely_remove_block_slot(&ar("successor"), &sn("x"));
-    assert_eq!(
-        res,
-        Err("Cannot safely remove slot in an invalid model".into())
-    );
-    assert!(model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("x")));
-}
+    #[test]
+    fn cannot_remove_another_artifact_that_is_referenced_by_multiple_structures() {
+        let mut model = and_one_more_is_five_model();
+        let res = model.safely_remove_artifact(&ar("successor"));
+        assert_eq!(
+            res,
+            Err(
+                "Cannot safely remove successor because is referenced by number_5 and plus_2"
+                    .into()
+            )
+        );
+        model.validate_model().unwrap();
+        assert!(model.list_artifacts().contains(&ar("zero")));
+        assert!(model.list_artifacts().contains(&ar("number_4")));
+    }
 
-#[test]
-fn can_safely_remove_a_slot_if_is_not_used_in_any_strucure() {
-    let mut model = two_and_two_is_four_model();
-    model.set_artifact(
-        ar("successor"),
-        Artifact::Block(Block {
-            main_slot_kind: sk("Natural"),
-            slots: hashmap! {
-                sn("x") => sk("Natural"),
-                sn("step") => sk("Natural"),
-            },
-        }),
-    );
-    // TODO: Assert that model here is 'disconnected' but not that much invalid
-    model
-        .safely_remove_block_slot(&ar("successor"), &sn("step"))
-        .expect("Should be able to remove it");
-    model.validate_model().unwrap();
-    assert!(model
-        .slots_of(&ar("successor"))
-        .unwrap()
-        .contains_key(&sn("x")));
-    assert_eq!(model.slots_of(&ar("successor")).unwrap().len(), 1);
+    #[test]
+    fn can_rename_slot_of_unused_block() {
+        let mut model = peano_model();
+        model
+            .rename_slot(&ar("successor"), &sn("x"), sn("y"))
+            .expect("Should be able to rename it");
+        assert!(!model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("x")));
+        assert!(model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("y")));
+    }
+
+    #[test]
+    fn cannot_rename_slot_into_an_already_existent_name() {
+        // This includes renaming a slot to the same name for now
+        let mut model = peano_model();
+        let res = model.rename_slot(&ar("successor"), &sn("x"), sn("x"));
+
+        assert_eq!(
+            res,
+            Err("Artifact successor already has a slot named 'x".into())
+        );
+        model.validate_model().unwrap();
+        assert!(model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("x")));
+    }
+
+    #[test]
+    fn cannot_rename_an_unexistent_slot() {
+        let mut model = peano_model();
+        let res = model.rename_slot(&ar("zero"), &sn("z"), sn("y"));
+
+        assert_eq!(res, Err("Slot 'z does not exists in zero".into()));
+        model.validate_model().unwrap();
+        assert!(model.slots_of(&ar("zero")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn renaming_slot_name_changes_dependant_structures() {
+        let mut model = two_and_two_is_four_model();
+        model
+            .rename_slot(&ar("successor"), &sn("x"), sn("y"))
+            .expect("Should be able to rename it");
+        model.validate_model().unwrap();
+        assert!(!model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("x")));
+        assert!(model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("y")));
+        assert_eq!(model.slots_of(&ar("plus_2")).unwrap().len(), 1);
+        assert!(model
+            .slots_of(&ar("plus_2"))
+            .unwrap()
+            .contains_key(&sn("x")));
+    }
+
+    #[test]
+    fn can_safely_remove_a_slot_if_its_artifact_is_not_used_by_any_structure() {
+        let mut model = peano_model();
+        model
+            .safely_remove_block_slot(&ar("successor"), &sn("x"))
+            .expect("Should be able to remove it");
+        model.validate_model().unwrap();
+        assert!(model.slots_of(&ar("successor")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn cannot_delete_an_unexisting_slot() {
+        let mut model = peano_model();
+        let res = model.safely_remove_block_slot(&ar("zero"), &sn("q"));
+        assert_eq!(res, Err("Block zero does not have a 'q slot".into()));
+        model.validate_model().unwrap();
+        assert!(model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("x")));
+    }
+
+    #[test]
+    fn cannot_delete_slot_from_an_unexistent_artifact() {
+        let mut model = peano_model();
+        let res = model.safely_remove_block_slot(&ar("wibblidy"), &sn("woob"));
+        assert_eq!(res, Err("Artifact wibblidy does not exist".into()));
+        model.validate_model().unwrap();
+    }
+
+    #[test]
+    fn cannot_delete_slot_from_a_structure() {
+        let mut model = and_one_more_is_five_model();
+        let res = model.safely_remove_block_slot(&ar("plus_2"), &sn("x"));
+        assert_eq!(res, Err("Cannot remove slot of a structure".into()));
+        model.validate_model().unwrap();
+    }
+
+    #[test]
+    fn cannot_delete_slot_if_some_structure_uses_it() {
+        let mut model = and_one_more_is_five_model();
+        let res = model.safely_remove_block_slot(&ar("successor"), &sn("x"));
+        assert_eq!(
+            res,
+            Err(
+                "Cannot remove slot 'x from successor because is used by number_5 and plus_2"
+                    .into()
+            )
+        );
+        model.validate_model().unwrap();
+        assert!(model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("x")));
+    }
+
+    #[test]
+    fn cannot_delete_slot_if_model_is_not_valid() {
+        let mut model = two_and_two_is_four_model();
+        model.remove_artifact(&ar("plus_2"));
+        let res = model.safely_remove_block_slot(&ar("successor"), &sn("x"));
+        assert_eq!(
+            res,
+            Err("Cannot safely remove slot in an invalid model".into())
+        );
+        assert!(model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("x")));
+    }
+
+    #[test]
+    fn can_safely_remove_a_slot_if_is_not_used_in_any_strucure() {
+        let mut model = two_and_two_is_four_model();
+        model.set_artifact(
+            ar("successor"),
+            Artifact::Block(Block {
+                main_slot_kind: sk("Natural"),
+                slots: hashmap! {
+                    sn("x") => sk("Natural"),
+                    sn("step") => sk("Natural"),
+                },
+            }),
+        );
+        // TODO: Assert that model here is 'disconnected' but not that much invalid
+        model
+            .safely_remove_block_slot(&ar("successor"), &sn("step"))
+            .expect("Should be able to remove it");
+        model.validate_model().unwrap();
+        assert!(model
+            .slots_of(&ar("successor"))
+            .unwrap()
+            .contains_key(&sn("x")));
+        assert_eq!(model.slots_of(&ar("successor")).unwrap().len(), 1);
+    }
 }
 
 #[test]
