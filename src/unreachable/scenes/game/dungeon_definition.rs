@@ -49,7 +49,7 @@ impl RoomGenerator for DungeonDefinition {
 pub fn lvl_1() -> DungeonDefinition {
     use Tile::*;
     DungeonDefinition {
-        mem_size: 9,
+        mem_size: 3,
         start_room: "S",
         lvl_gen_rules: vec![
             Rule::at("S")   .through(1)  .gets_to("a"),

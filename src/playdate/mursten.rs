@@ -626,8 +626,8 @@ pub mod example {
 }
 #[cfg(test)]
 mod test {
-    use super::*;
     use super::example::*;
+    use super::*;
 
     #[test]
     fn empty_model_is_valid() {
@@ -638,6 +638,7 @@ mod test {
 
     #[test]
     fn a_simple_block() {
+        // Given
         let mut model = empty_test_model();
         let a = ar("a");
         model.set_artifact(

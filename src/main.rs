@@ -25,13 +25,13 @@ pub fn main() {
         .add_plugin(plain_simple_physics::PlainSimplePhysicsPlugin)
         .add_plugin(EguiPlugin)
         .add_plugin(PyxelPlugin)
-        //.add_plugin(UnreachableGame)
-        .add_plugin(root_ui::RootUiPlugin)
-        .add_plugin(playdate::PlaydateSkeletonsPlugin)
+        .add_plugin(UnreachableGame)
+        //.add_plugin(root_ui::RootUiPlugin)
+        //.add_plugin(playdate::PlaydateSkeletonsPlugin)
         //.add_plugin(sprint::SprintGame)
         //.add_plugin(peach::PeachyThingiesPlugin)
-        //.add_startup_system(setup_orhographic_camera.system())
-        //.add_startup_system(common::known_fonts::load_known_fonts.system())
+        .add_startup_system(setup_orhographic_camera.system())
+        .add_startup_system(common::known_fonts::load_known_fonts.system())
         .run();
 }
 
